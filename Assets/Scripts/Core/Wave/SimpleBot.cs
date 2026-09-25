@@ -21,6 +21,8 @@ namespace LaneBattle.Core.Wave
         public void Decide(MatchSim sim, int team, int player, List<MatchCommand> output)
         {
             var p = sim.Player(team, player);
+            if (p.Offers.Count > 0) { output.Add(MatchCommand.PickAugment(team, player, PickAugmentIndex(p))); return; }
+            if (sim.IsPaused) return;
             var lane = sim.OwnLane(team);
             var enemyLane = sim.EnemyLane(team);
             int seconds = sim.Seconds;
@@ -81,6 +83,19 @@ namespace LaneBattle.Core.Wave
             // 4. 손패가 비었거나 다 비싸면 뽑기
             if (p.Hand.Count < sim.Cfg.HandMax && spendable >= sim.Cfg.DrawCost && p.Gold >= sim.Cfg.DrawCost + reserve)
                 output.Add(MatchCommand.Draw(team, player));
+        }
+
+        static readonly AugmentId[] Preference = { AugmentId.Legacy, AugmentId.Mercenaries, AugmentId.Fortress, AugmentId.Venom, AugmentId.Interest, AugmentId.Elite, AugmentId.Merchant, AugmentId.AirNet, AugmentId.Curse, AugmentId.Corrosion, AugmentId.SilenceShell, AugmentId.Accountant, AugmentId.Scout, AugmentId.Wiretap };
+
+        static int PickAugmentIndex(PlayerEcon p)
+        {
+            int best = 0, bestRank = int.MaxValue;
+            for (int i = 0; i < p.Offers.Count; i++)
+            {
+                int rank = System.Array.IndexOf(Preference, p.Offers[i]);
+                if (rank < bestRank) { bestRank = rank; best = i; }
+            }
+            return best;
         }
 
         static int PickGeneral(int towers, int gold)
