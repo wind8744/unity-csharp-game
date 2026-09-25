@@ -61,8 +61,8 @@ namespace LaneBattle.Game
             Sim = new MatchSim(new MatchConfig(), Seed);
             var lane = Sim.Lanes[0].Cfg;
             float gap = lane.Width + 1.8f;
-            _enemyLane = new LaneRenderer(transform, _square, Sim.OwnLane(Enemy), new Vector2(0, gap), "상대 라인 ← 내가 보낸 유닛이 여기서 출발", "상대 기지 →", "상대 타워");
-            _myLane = new LaneRenderer(transform, _square, Sim.OwnLane(Me), Vector2.zero, "내 라인 ← 상대가 보낸 유닛이 들어옴", "내 기지 →", "내 타워 슬롯: 빈 칸 클릭 = 짓기, 다시 클릭 = 강화, 우클릭 = 판매");
+            _enemyLane = new LaneRenderer(transform, _square, Sim.OwnLane(Enemy), new Vector2(0, gap), "상대 라인 ← 내가 보낸 유닛 출발", "상대 기지 →", "상대 타워");
+            _myLane = new LaneRenderer(transform, _square, Sim.OwnLane(Me), Vector2.zero, "내 라인 ← 상대 유닛 진입", "내 기지 →", "내 타워: 클릭 짓기 · 재클릭 강화 · 우클릭 판매");
             _myLane.Banner += t => ShowBanner("내 라인 " + t);
             BuildCamera(lane, gap);
             _pending.Clear();
