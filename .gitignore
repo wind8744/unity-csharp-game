@@ -55,3 +55,6 @@ crashlytics-build.properties
 
 # macOS
 .DS_Store
+
+# Unity 6 solution file
+*.slnx
