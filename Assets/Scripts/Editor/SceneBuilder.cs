@@ -21,7 +21,7 @@ namespace LaneBattle.Editor
             cam.tag = "MainCamera";
             cam.transform.position = new Vector3(0, 0, -10);
             var view = new GameObject("WaveView", typeof(WaveView));
-            view.GetComponent<WaveView>().ScenarioIndex = 1;
+            view.GetComponent<WaveView>().PresetIndex = 1;
             EditorSceneManager.SaveScene(scene, WaveScenePath);
 
             var scenes = new List<EditorBuildSettingsScene>();
