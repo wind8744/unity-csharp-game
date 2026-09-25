@@ -13,7 +13,7 @@ namespace LaneBattle.Editor
             Directory.CreateDirectory(dir);
             var opts = new BuildPlayerOptions
             {
-                scenes = new[] { SceneBuilder.ScenePath },
+                scenes = new[] { SceneBuilder.WaveScenePath, SceneBuilder.ScenePath },
                 locationPathName = Path.Combine(dir, "LaneBattlePrototype.app"),
                 target = BuildTarget.StandaloneOSX,
                 options = BuildOptions.None,

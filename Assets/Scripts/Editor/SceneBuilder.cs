@@ -11,6 +11,25 @@ namespace LaneBattle.Editor
     public static class SceneBuilder
     {
         public const string ScenePath = "Assets/Scenes/Prototype.unity";
+        public const string WaveScenePath = "Assets/Scenes/WaveProto.unity";
+
+        [MenuItem("LaneBattle/Build Wave Prototype Scene")]
+        public static void BuildWave()
+        {
+            var scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
+            var cam = new GameObject("Main Camera", typeof(Camera), typeof(AudioListener));
+            cam.tag = "MainCamera";
+            cam.transform.position = new Vector3(0, 0, -10);
+            var view = new GameObject("WaveView", typeof(WaveView));
+            view.GetComponent<WaveView>().ScenarioIndex = 1;
+            EditorSceneManager.SaveScene(scene, WaveScenePath);
+
+            var scenes = new List<EditorBuildSettingsScene>();
+            foreach (var s in EditorBuildSettings.scenes) if (s.path != WaveScenePath) scenes.Add(s);
+            scenes.Insert(0, new EditorBuildSettingsScene(WaveScenePath, true));
+            EditorBuildSettings.scenes = scenes.ToArray();
+            Debug.Log($"씬 생성: {WaveScenePath}");
+        }
 
         [MenuItem("LaneBattle/Build Prototype Scene")]
         public static void Build()
@@ -31,7 +50,7 @@ namespace LaneBattle.Editor
 
             var scenes = new List<EditorBuildSettingsScene>();
             foreach (var s in EditorBuildSettings.scenes) if (s.path != ScenePath) scenes.Add(s);
-            scenes.Insert(0, new EditorBuildSettingsScene(ScenePath, true));
+            scenes.Add(new EditorBuildSettingsScene(ScenePath, true));
             EditorBuildSettings.scenes = scenes.ToArray();
             Debug.Log($"씬 생성: {ScenePath}");
         }
