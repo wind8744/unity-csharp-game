@@ -99,6 +99,12 @@ namespace LaneBattle.Core.Wave
 
         // ─────────────────────────── 명령 ───────────────────────────
 
+        public Tower TowerAt(int id)
+        {
+            foreach (var t in Towers) if (t.Alive && t.Id == id) return t;
+            return null;
+        }
+
         public Tower TowerAt(int col, int row)
         {
             foreach (var t in Towers) if (t.Alive && t.Col == col && t.Row == row) return t;
