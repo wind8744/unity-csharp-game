@@ -8,8 +8,8 @@ namespace LaneBattle.Core
         public int Turns = 7;
         public int TowerHp = 15;          // 2v2 타워 체력
         public int SoloTowerHp = 10;      // 1v1 타워 체력 (시뮬 v0.1: 15는 너무 굼뜸)
-        public int AttritionDeaths = 20;  // 소모전 미션 조건 (시뮬 v0.1: 8은 공짜)
-        public int OverloadTowerCost = 2; // 과부하 증강의 타워 체력 대가 (시뮬 v0.1: 3은 손해)
+        public int AttritionDeaths = 28;  // 소모전 미션 조건 (시뮬 v0.1: 8은 공짜, 20도 80%)
+        public int OverloadTowerCost = 1; // 과부하 증강의 타워 체력 대가 (시뮬 v0.1: 3·2 모두 손해)
         public int LaneCap = 4;
         public int CanyonCap = 2;
         public int StartHand = 3;
