@@ -183,7 +183,7 @@ namespace LaneBattle.Game
 
             _log.text = Match.LastTurnLog.Count == 0
                 ? "카드를 고르고 라인의 [여기에 배치]를 누르세요. 상대는 내 배치를 못 봅니다. 확정하면 동시에 공개되고 전투가 벌어집니다."
-                : string.Join("\n", Tail(Match.LastTurnLog, 11));
+                : string.Join("\n", Tail(Match.LastTurnLog, 11)).Replace("T0P0", "나").Replace("T1P0", "상대").Replace("T0 ", "내 ").Replace("T1 ", "상대 ");
 
             BuildHand();
             BuildAugmentPanel();

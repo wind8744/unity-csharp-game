@@ -408,7 +408,7 @@ namespace LaneBattle.Core
             }
             State.TowerDamageThisTurn[team, l] += amount;
             ts.TowerHp[l] -= amount;
-            L($"T{team} {Names.Lane(lane)} 타워 -{amount} → {ts.TowerHp[l]}");
+            L($"T{team} {Names.Lane(lane)} 타워 -{amount} → {Math.Max(0, ts.TowerHp[l])}");
             if (ts.TowerHp[l] <= 0) DestroyTower(team, lane);
         }
 
