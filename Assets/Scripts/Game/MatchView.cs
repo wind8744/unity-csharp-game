@@ -182,8 +182,12 @@ namespace LaneBattle.Game
             cam.clearFlags = CameraClearFlags.SolidColor;
             cam.backgroundColor = new Color(0.12f, 0.13f, 0.16f);
             float totalH = gap + lane.Width + 1f;
-            cam.transform.position = new Vector3(lane.Length / 2f + 0.3f, totalH / 2f - 2.4f, -10);
             cam.orthographicSize = Mathf.Max((lane.Length + 2f) / cam.aspect / 2f, totalH / 2f + 2.4f);
+            // 화면 세로: 위 HUD 약 50px, 아래 패널 556px 부터. 두 라인(월드 y -0.5 ~ totalH-0.5)이 그 사이 중앙에 오도록.
+            float unitsPerPixel = cam.orthographicSize * 2f / 720f;
+            float lanesCenterWorld = (totalH - 1f) / 2f;
+            float targetCenterPixel = (50f + 556f) / 2f;
+            cam.transform.position = new Vector3(lane.Length / 2f + 0.3f, lanesCenterWorld + (targetCenterPixel - 360f) * unitsPerPixel, -10);
         }
 
         void BuildHud()
@@ -199,32 +203,32 @@ namespace LaneBattle.Game
             var root = canvasGo.transform;
 
             _hud = UiKit.Label(root, "Hud", 20, 8, 1240, 44, "", 16, TextAnchor.UpperLeft, UiKit.Accent);
-            _banner = UiKit.Label(root, "Banner", 0, 262, 1280, 30, "", 20, TextAnchor.MiddleCenter, new Color(1f, 0.6f, 0.4f));
-            _msg = UiKit.Label(root, "Msg", 0, 290, 1280, 24, "", 14, TextAnchor.MiddleCenter, new Color(0.8f, 0.85f, 1f));
+            _banner = UiKit.Label(root, "Banner", 0, 272, 1280, 26, "", 19, TextAnchor.MiddleCenter, new Color(1f, 0.6f, 0.4f));
+            _msg = UiKit.Label(root, "Msg", 0, 298, 1280, 20, "", 13, TextAnchor.MiddleCenter, new Color(0.8f, 0.85f, 1f));
 
             // 손패
-            _handTitle = UiKit.Label(root, "HandTitle", 20, 520, 700, 22, "", 13);
-            _hand = UiKit.Rect(root, "Hand", 20, 544, 900, 70);
-            UiKit.ButtonBox(root, "Draw", 940, 544, 150, 66, "뽑기\n5골드", () => Draw(), new Color(0.55f, 0.4f, 0.7f), 15);
-            UiKit.Label(root, "DrawInfo", 1100, 544, 170, 66, "일반 60%\n희귀 30%\n영웅 10%", 12);
+            _handTitle = UiKit.Label(root, "HandTitle", 20, 556, 700, 18, "", 12);
+            _hand = UiKit.Rect(root, "Hand", 20, 574, 900, 58);
+            UiKit.ButtonBox(root, "Draw", 940, 574, 150, 58, "뽑기 5골드", () => Draw(), new Color(0.55f, 0.4f, 0.7f), 15);
+            UiKit.Label(root, "DrawInfo", 1100, 574, 170, 58, "일반 60% · 희귀 30%\n영웅 10%", 11);
 
             // 타워
-            UiKit.Label(root, "TowerTitle", 20, 618, 700, 20, "지을 타워 (선택 후 내 라인의 빈 슬롯 클릭)", 13);
+            UiKit.Label(root, "TowerTitle", 20, 636, 700, 18, "지을 타워 (선택 후 내 라인의 빈 슬롯 클릭)", 12);
             float x = 20;
             foreach (var d in WaveCatalog.Towers)
             {
                 int id = d.Id;
-                var b = UiKit.ButtonBox(root, "T" + id, x, 640, 128, 40, $"{d.Name} {d.Cost}골드\n공{d.Atk} 사{d.Range10 / 10f:0.#}", () => { SelectedTowerId = id; RefreshTowerButtons(); }, LaneRenderer.TowerColor(d), 11);
+                var b = UiKit.ButtonBox(root, "T" + id, x, 654, 128, 34, $"{d.Name} {d.Cost}골드\n공{d.Atk} 사{d.Range10 / 10f:0.#}", () => { SelectedTowerId = id; RefreshTowerButtons(); }, LaneRenderer.TowerColor(d), 10);
                 foreach (var txt in b.GetComponentsInChildren<Text>()) txt.color = Color.black;
                 _towerButtons.Add(b);
                 x += 134;
             }
-            _selectedInfo = UiKit.Label(root, "Sel", 20, 684, 900, 20, "", 12);
-            UiKit.ButtonBox(root, "Again", 940, 684, 100, 30, "새 판", () => { Seed++; Restart(); }, null, 12);
-            UiKit.ButtonBox(root, "Pause", 1050, 684, 70, 30, "정지", () => _paused = !_paused, null, 12);
-            UiKit.ButtonBox(root, "S1", 1130, 684, 40, 30, "1배", () => Speed = 1f, null, 11);
-            UiKit.ButtonBox(root, "S2", 1175, 684, 40, 30, "2배", () => Speed = 2f, null, 11);
-            UiKit.ButtonBox(root, "S4", 1220, 684, 40, 30, "4배", () => Speed = 4f, null, 11);
+            _selectedInfo = UiKit.Label(root, "Sel", 20, 692, 900, 24, "", 12);
+            UiKit.ButtonBox(root, "Again", 940, 692, 100, 26, "새 판", () => { Seed++; Restart(); }, null, 12);
+            UiKit.ButtonBox(root, "Pause", 1050, 692, 70, 26, "정지", () => _paused = !_paused, null, 12);
+            UiKit.ButtonBox(root, "S1", 1130, 692, 40, 26, "1배", () => Speed = 1f, null, 11);
+            UiKit.ButtonBox(root, "S2", 1175, 692, 40, 26, "2배", () => Speed = 2f, null, 11);
+            UiKit.ButtonBox(root, "S4", 1220, 692, 40, 26, "4배", () => Speed = 4f, null, 11);
             RefreshTowerButtons();
         }
 
@@ -254,7 +258,7 @@ namespace LaneBattle.Game
                 int cost = Sim.SendCostOf(d);
                 var color = d.Tribe switch { AtkTribe.Beast => new Color(0.85f, 0.35f, 0.35f), AtkTribe.Air => new Color(0.75f, 0.45f, 0.85f), AtkTribe.Giant => new Color(0.6f, 0.4f, 0.3f), _ => new Color(0.45f, 0.32f, 0.55f) };
                 string rar = d.Rarity == Rarity.Hero ? "★영웅" : d.Rarity == Rarity.Rare ? "희귀" : "일반";
-                var b = UiKit.ButtonBox(_hand, "C" + i, i * (cw + gap), 0, cw, 66, $"{d.Name} ({rar})\n보내기 {cost}골드 · 체력 {d.Hp}\n누수 {d.Leak} · 인컴 +{System.Math.Max(1, d.Income * Sim.Cfg.SendIncomePercent / 100)}{(d.Flying ? " · 공중" : "")}", () => SendCard(idx), color, 11);
+                var b = UiKit.ButtonBox(_hand, "C" + i, i * (cw + gap), 0, cw, 58, $"{d.Name} ({rar})\n보내기 {cost}골드 · 체력 {d.Hp}\n누수 {d.Leak} · 인컴 +{System.Math.Max(1, d.Income * Sim.Cfg.SendIncomePercent / 100)}{(d.Flying ? " · 공중" : "")}", () => SendCard(idx), color, 11);
                 b.interactable = p.Gold >= cost;
             }
             if (p.Hand.Count == 0) UiKit.Label(_hand, "Empty", 0, 20, 600, 30, "손패가 비었습니다. [뽑기]로 공격 유닛을 뽑으세요.", 13);
