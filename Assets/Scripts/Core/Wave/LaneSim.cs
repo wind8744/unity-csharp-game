@@ -15,6 +15,8 @@ namespace LaneBattle.Core.Wave
         public int FirstWaveSeconds = 30;
         public int WaveIntervalSeconds = 30;
         public int WaveScalePercent = 100;
+        public int LateWaveIndex = 9;       // 이 번호(0부터)부터 기본 웨이브 체력이 웨이브마다 LateWaveStepPercent 씩 오른다 (후반 압박, 문서 4절)
+        public int LateWaveStepPercent = 8;
         public int BuildSeconds = 2;
         public int BaseHp = 30;
         public int SpawnGapTicks = 6;       // 같은 무리 안 출발 간격
@@ -28,6 +30,7 @@ namespace LaneBattle.Core.Wave
         public int Id; public TowerDef Def; public int Col, Row, Owner;
         public int X, Y;
         public bool Upgraded;
+        public int Star = 1;                // 같은 타워 3개 → ★2, ★2 3개 → ★3
         public int UpgradePercent = 50;     // 정예 증강이면 80
         public bool ForceAntiAir;           // 대공망 증강
         public int SlowedLeft, SlowedPercent; // 저주: 공속 감소
@@ -55,7 +58,7 @@ namespace LaneBattle.Core.Wave
         public bool Stealthed => StealthLeft > 0;
     }
 
-    public enum SimEventType { WaveStart, Spawn, Built, Sold, Upgraded, Attack, Damage, Death, Leak, Heal, Silence, Slow, MatchEnd }
+    public enum SimEventType { WaveStart, Spawn, Built, Sold, Upgraded, Attack, Damage, Death, Leak, Heal, Silence, Slow, MatchEnd, Merged, Fused }
 
     public struct SimEvent
     {
@@ -177,6 +180,46 @@ namespace LaneBattle.Core.Wave
             return null;
         }
 
+        /// <summary>같은 정의·같은 별 타워 3개를 하나로 합쳐 별을 올린다. 결과는 target 자리에, 즉시 완성. 재료 중 하나라도 강화면 강화 유지.</summary>
+        public Tower MergeStar(int targetId, int otherId1, int otherId2)
+        {
+            var a = FindTower(targetId); var b = FindTower(otherId1); var c = FindTower(otherId2);
+            if (a == null || b == null || c == null || a.Id == b.Id || a.Id == c.Id || b.Id == c.Id) return null;
+            if (a.Def.Id != b.Def.Id || a.Def.Id != c.Def.Id || a.Star != b.Star || a.Star != c.Star || a.Star >= 3) return null;
+            var r = new Tower
+            {
+                Id = _nextId++, Def = a.Def, Col = a.Col, Row = a.Row, Owner = a.Owner, X = a.X, Y = a.Y,
+                Star = a.Star + 1, Upgraded = a.Upgraded || b.Upgraded || c.Upgraded,
+                UpgradePercent = Math.Max(a.UpgradePercent, Math.Max(b.UpgradePercent, c.UpgradePercent)),
+                ForceAntiAir = a.ForceAntiAir || b.ForceAntiAir || c.ForceAntiAir,
+            };
+            a.Alive = b.Alive = c.Alive = false;
+            Emit(SimEventType.Sold, b.Id, -1, 0); Emit(SimEventType.Sold, c.Id, -1, 0); Emit(SimEventType.Sold, a.Id, -1, 0);
+            Towers.Add(r);
+            Emit(SimEventType.Merged, r.Id, a.Id, r.Star);
+            return r;
+        }
+
+        /// <summary>레시피에 맞는 타워 두 개를 합성 타워로 바꾼다. 결과는 a 자리에, 즉시 완성, ★1. 강화는 둘 중 하나라도 있으면 유지.</summary>
+        public Tower Fuse(int aId, int bId)
+        {
+            var a = FindTower(aId); var b = FindTower(bId);
+            if (a == null || b == null || a.Id == b.Id) return null;
+            var def = WaveCatalog.FindRecipe(a.Def.Id, b.Def.Id);
+            if (def == null) return null;
+            var r = new Tower
+            {
+                Id = _nextId++, Def = def, Col = a.Col, Row = a.Row, Owner = a.Owner, X = a.X, Y = a.Y,
+                Star = 1, Upgraded = a.Upgraded || b.Upgraded, UpgradePercent = Math.Max(a.UpgradePercent, b.UpgradePercent),
+                ForceAntiAir = a.ForceAntiAir || b.ForceAntiAir,
+            };
+            a.Alive = b.Alive = false;
+            Emit(SimEventType.Sold, b.Id, -1, 0); Emit(SimEventType.Sold, a.Id, -1, 0);
+            Towers.Add(r);
+            Emit(SimEventType.Fused, r.Id, a.Id, def.Id);
+            return r;
+        }
+
         /// <summary>유닛을 이 라인에 보낸다 (상대가 보낸 것, 또는 기본 웨이브). 무리는 출발 간격을 두고 줄지어 나온다.</summary>
         public Creep Send(AttackerDef def, bool fromEnemy = true, int groupId = 0, int hpMult = 1, int hpPercent = 100)
         {
@@ -200,10 +243,11 @@ namespace LaneBattle.Core.Wave
         {
             if (index < 0 || index >= WaveCatalog.BaseWaves.Length) return;
             Emit(SimEventType.WaveStart, index, -1, 0);
+            int hpPercent = 100 + Math.Max(0, index - Cfg.LateWaveIndex) * Cfg.LateWaveStepPercent;
             foreach (var (id, count, mult) in WaveCatalog.BaseWaves[index])
             {
                 int n = Math.Max(1, count * Cfg.WaveScalePercent / 100);
-                for (int i = 0; i < n; i++) Send(WaveCatalog.Attacker(id), false, -1, mult);
+                for (int i = 0; i < n; i++) Send(WaveCatalog.Attacker(id), false, -1, mult, hpPercent);
             }
         }
 
@@ -328,7 +372,7 @@ namespace LaneBattle.Core.Wave
 
         public int EffectiveRange(Tower t)
         {
-            int r10 = t.Def.Range10;
+            int r10 = t.Def.Range10 + WaveCatalog.StarRangeBonus10(t.Star);
             if (Forest3) r10 += 5;
             if (t.Def.Job == DefJob.Archer && RowArcher2[t.Row]) r10 += 10;
             r10 += Mod.TowerRangeDelta10;
@@ -337,6 +381,8 @@ namespace LaneBattle.Core.Wave
 
         bool IsAntiAir(Tower t) => t.Def.AntiAir || (t.ForceAntiAir && t.Def.Job == DefJob.Archer);
 
+        /// <summary>오라 수치도 별을 따라 오른다 (★2 ×1.5, ★3 ×2).</summary>
+        static int AuraPercent(Tower s, int percent) => s.Star <= 1 ? percent : s.Star == 2 ? percent * 150 / 100 : percent * 2;
         int MageBoost(Tower t, int percent) => t.Def.Job == DefJob.Mage && RowMage2[t.Row] ? percent * 150 / 100 : percent;
         int SplashRadius10(Tower t) => t.Def.SplashRadius10 == 0 ? 0 : (t.Def.Job == DefJob.Mage && RowMage2[t.Row] ? t.Def.SplashRadius10 * 150 / 100 : t.Def.SplashRadius10);
 
@@ -349,7 +395,7 @@ namespace LaneBattle.Core.Wave
                 if (Machine5) per10s = per10s * 120 / 100;
                 foreach (var s in Towers)
                     if (s.Alive && s.Ready && s.Def.AuraSpeedPercentMachine > 0 && s.Id != t.Id && Dist2(s.X, s.Y, t.X, t.Y) <= Sq(s.Def.Range10 * 100))
-                    { per10s = per10s * (100 + MageBoost(s, s.Def.AuraSpeedPercentMachine)) / 100; break; }
+                    { per10s = per10s * (100 + MageBoost(s, AuraPercent(s, s.Def.AuraSpeedPercentMachine))) / 100; break; }
             }
             if (t.SlowedLeft > 0) per10s = per10s * (100 - t.SlowedPercent) / 100;
             return Math.Max(1, Cfg.TicksPerSecond * 10 / Math.Max(1, per10s));
@@ -358,12 +404,13 @@ namespace LaneBattle.Core.Wave
         int EffectiveDamage(Tower t, Creep target)
         {
             int dmg = t.Def.Atk * Cfg.TowerDamagePercent / 100;
+            dmg = dmg * WaveCatalog.StarPercent(t.Star) / 100;
             if (t.Upgraded) dmg = dmg * (100 + t.UpgradePercent) / 100;
             if (Fire3) dmg = dmg * 110 / 100;
             if (t.Def.Job == DefJob.Warrior && RowWarrior2[t.Row]) dmg = dmg * 120 / 100;
             foreach (var s in Towers)
                 if (s.Alive && s.Ready && s.Def.AuraAtkPercent > 0 && s.Id != t.Id && Dist2(s.X, s.Y, t.X, t.Y) <= Sq(s.Def.Range10 * 100))
-                { dmg = dmg * (100 + MageBoost(s, s.Def.AuraAtkPercent)) / 100; break; }
+                { dmg = dmg * (100 + MageBoost(s, AuraPercent(s, s.Def.AuraAtkPercent))) / 100; break; }
             if (target.Def.Flying) dmg *= t.Def.AirMultiplier;
             if (target.Def.Tribe == AtkTribe.Giant) dmg *= t.Def.GiantMultiplier;
             return dmg;
@@ -489,7 +536,7 @@ namespace LaneBattle.Core.Wave
             var sb = new System.Text.StringBuilder();
             sb.Append(Tick).Append('|').Append(BaseHp).Append('|').Append(Leaked).Append('|').Append(Kills).Append('|');
             foreach (var c in Creeps) sb.Append(c.Id).Append(':').Append(c.X).Append(',').Append(c.Hp).Append(' ');
-            foreach (var t in Towers) sb.Append('T').Append(t.Id).Append(':').Append(t.CooldownLeft).Append(' ');
+            foreach (var t in Towers) if (t.Alive) sb.Append('T').Append(t.Id).Append(':').Append(t.Def.Id).Append('s').Append(t.Star).Append(':').Append(t.CooldownLeft).Append(' ');
             return sb.ToString();
         }
     }

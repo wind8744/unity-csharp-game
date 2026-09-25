@@ -13,8 +13,8 @@ namespace LaneBattle.Editor
             Directory.CreateDirectory(dir);
             var opts = new BuildPlayerOptions
             {
-                scenes = new[] { SceneBuilder.MatchScenePath, SceneBuilder.WaveScenePath, SceneBuilder.ScenePath },
-                locationPathName = Path.Combine(dir, "LaneBattlePrototype.app"),
+                scenes = new[] { SceneBuilder.MainScenePath },
+                locationPathName = Path.Combine(dir, "ChokkomiSiege.app"),
                 target = BuildTarget.StandaloneOSX,
                 options = BuildOptions.None,
             };

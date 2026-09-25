@@ -18,6 +18,9 @@ namespace LaneBattle.Core.Wave
         public int SendCostPercent = 125;      // 보내기 비용 배율
         public int SendIncomePercent = 50;     // 보낼 때 오르는 인컴 배율 (정수 나눗셈, 최소 1)
         public int BaseHpOverride = 0;          // 0 이면 인원수 기본값
+        public int LaneWidthOverride = 0;       // 0 이면 인원수 기본값
+        public int WaveScaleOverride = 0;       // 0 이면 인원수 기본값
+        public int LateWaveStepPercent = 8;     // 10번째 웨이브부터 웨이브마다 기본 웨이브 체력 +8%
         public int[] AugmentSeconds = { 180, 360 };   // 증강 선택 시각
         public int AugmentPauseSeconds = 10;
         public int[] EventSeconds = { 270, 450 };     // 이벤트 시간대 시작
@@ -25,14 +28,16 @@ namespace LaneBattle.Core.Wave
         public int EventWarnSeconds = 30;
         public bool FunLayer = true;                  // 증강·이벤트·미션·시너지 켜기
 
-        public int LaneWidth => PlayersPerTeam switch { 1 => 4, 2 => 6, _ => 8 };
-        public int BaseHp => BaseHpOverride > 0 ? BaseHpOverride : PlayersPerTeam switch { 1 => 60, 2 => 90, _ => 120 };
-        public int WaveScalePercent => PlayersPerTeam switch { 1 => 100, 2 => 160, _ => 220 };
+        // 인원수별 기본값 (봇 스윕으로 결정, 문서 3-2절): 1v1 폭4·기지40·웨이브100%, 2v2 폭5·기지120·130%, 3v3 폭6·기지300·130%
+        public int LaneWidth => LaneWidthOverride > 0 ? LaneWidthOverride : PlayersPerTeam switch { 1 => 4, 2 => 5, _ => 6 };
+        public int BaseHp => BaseHpOverride > 0 ? BaseHpOverride : PlayersPerTeam switch { 1 => 40, 2 => 120, _ => 300 };
+        public int WaveScalePercent => WaveScaleOverride > 0 ? WaveScaleOverride : PlayersPerTeam switch { 1 => 100, _ => 130 };
 
         public LaneConfig MakeLaneConfig() => new LaneConfig
         {
             Width = LaneWidth, BaseHp = BaseHp, WaveScalePercent = WaveScalePercent,
             TicksPerSecond = TicksPerSecond, MatchSeconds = MatchSeconds, TowerDamagePercent = TowerDamagePercent,
+            LateWaveStepPercent = LateWaveStepPercent,
         };
     }
 
@@ -66,7 +71,7 @@ namespace LaneBattle.Core.Wave
         public List<(int tick, int defId, int creepId)> RecentSends = new List<(int, int, int)>();
     }
 
-    public enum CommandType { Build, Upgrade, Sell, Draw, Send, Transfer, PickAugment }
+    public enum CommandType { Build, Upgrade, Sell, Draw, Send, Transfer, PickAugment, Merge, Fuse }
 
     /// <summary>플레이어 명령. 락스텝에서 틱 번호와 함께 교환되는 유일한 입력.</summary>
     public struct MatchCommand
@@ -82,9 +87,13 @@ namespace LaneBattle.Core.Wave
         public static MatchCommand Send(int team, int player, int handIndex) => new MatchCommand { Team = team, Player = player, Type = CommandType.Send, A = handIndex };
         public static MatchCommand Transfer(int team, int player, int toPlayer, int amount) => new MatchCommand { Team = team, Player = player, Type = CommandType.Transfer, A = toPlayer, B = amount };
         public static MatchCommand PickAugment(int team, int player, int offerIndex) => new MatchCommand { Team = team, Player = player, Type = CommandType.PickAugment, A = offerIndex };
+        /// <summary>별 합치기: 타워 A 와 같은 정의·별인 내 타워 두 개를 골라 A 자리에 ★+1.</summary>
+        public static MatchCommand Merge(int team, int player, int towerId) => new MatchCommand { Team = team, Player = player, Type = CommandType.Merge, A = towerId };
+        /// <summary>합성: 타워 A 와 타워 B (레시피) → A 자리에 합성 타워.</summary>
+        public static MatchCommand Fuse(int team, int player, int towerA, int towerB) => new MatchCommand { Team = team, Player = player, Type = CommandType.Fuse, A = towerA, B = towerB };
     }
 
-    public enum MatchEventType { Income, Drew, Sent, Built, Upgraded, Sold, KillGold, Rejected, MatchEnd, AugmentOffer, AugmentPicked, PauseEnd, EventWarn, EventStart, EventEnd, MissionDone, GroupSynergy }
+    public enum MatchEventType { Income, Drew, Sent, Built, Upgraded, Sold, KillGold, Rejected, MatchEnd, AugmentOffer, AugmentPicked, PauseEnd, EventWarn, EventStart, EventEnd, MissionDone, GroupSynergy, Merged, Fused }
 
     public struct MatchEvent
     {
@@ -396,11 +405,35 @@ namespace LaneBattle.Core.Wave
                     Emit(MatchEventType.Upgraded, c.Team, c.Player, t.Id, upCost);
                     break;
                 }
+                case CommandType.Merge:
+                {
+                    var t = lane.TowerAt(c.A);
+                    if (t == null || t.Owner != c.Player) { Reject(c); return; }
+                    var mates = MergeMates(c.Team, t);
+                    if (mates == null) { Reject(c); return; }
+                    var r = lane.MergeStar(t.Id, mates.Value.Item1, mates.Value.Item2);
+                    if (r == null) { Reject(c); return; }
+                    if (p.Has(AugmentId.Elite)) r.UpgradePercent = 80;
+                    if (p.Has(AugmentId.AirNet)) r.ForceAntiAir = true;
+                    Emit(MatchEventType.Merged, c.Team, c.Player, r.Id, r.Star);
+                    break;
+                }
+                case CommandType.Fuse:
+                {
+                    var a = lane.TowerAt(c.A); var b = lane.TowerAt(c.B);
+                    if (a == null || b == null || a.Owner != c.Player || b.Owner != c.Player || WaveCatalog.FindRecipe(a.Def.Id, b.Def.Id) == null) { Reject(c); return; }
+                    var r = lane.Fuse(a.Id, b.Id);
+                    if (r == null) { Reject(c); return; }
+                    if (p.Has(AugmentId.Elite)) r.UpgradePercent = 80;
+                    if (p.Has(AugmentId.AirNet)) r.ForceAntiAir = true;
+                    Emit(MatchEventType.Fused, c.Team, c.Player, r.Id, r.Def.Id);
+                    break;
+                }
                 case CommandType.Sell:
                 {
                     var t = lane.TowerAt(c.A);
                     if (t == null) { Reject(c); return; }
-                    int refund = (t.Def.Cost * (t.Upgraded ? 2 : 1)) * 80 / 100;
+                    int refund = SellValueOf(t);
                     lane.Sell(t.Id);
                     p.Gold += refund;
                     Emit(MatchEventType.Sold, c.Team, c.Player, t.Id, refund);
@@ -461,6 +494,46 @@ namespace LaneBattle.Core.Wave
             int cost = Math.Max(1, def.SendCost * Cfg.SendCostPercent / 100);
             if (ActiveEvent == EventId.Bazaar) cost = Math.Max(1, cost / 2);
             return cost;
+        }
+
+        /// <summary>판매 환불: 비용 × 3^(별-1) × (강화 2) × 80%.</summary>
+        public static int SellValueOf(Tower t)
+        {
+            int value = t.Def.Cost;
+            for (int i = 1; i < t.Star; i++) value *= 3;
+            if (t.Upgraded) value *= 2;
+            return value * 80 / 100;
+        }
+
+        /// <summary>타워 t 와 합칠 수 있는 같은 주인·같은 정의·같은 별 타워 두 개 (id 낮은 순). 없으면 null.</summary>
+        public (int, int)? MergeMates(int team, Tower t)
+        {
+            if (t == null || t.Star >= 3) return null;
+            var lane = Lanes[team];
+            var ids = new List<int>();
+            foreach (var o in lane.Towers)
+                if (o.Alive && o.Id != t.Id && o.Owner == t.Owner && o.Def.Id == t.Def.Id && o.Star == t.Star) ids.Add(o.Id);
+            if (ids.Count < 2) return null;
+            ids.Sort();
+            return (ids[0], ids[1]);
+        }
+
+        /// <summary>타워 t 와 합성할 수 있는 같은 주인 타워들 (레시피 짝). (짝 타워 id, 결과 정의).</summary>
+        public List<(int partnerId, TowerDef result)> FuseOptions(int team, Tower t)
+        {
+            var list = new List<(int, TowerDef)>();
+            if (t == null) return list;
+            var lane = Lanes[team];
+            foreach (var o in lane.Towers)
+            {
+                if (!o.Alive || o.Id == t.Id || o.Owner != t.Owner) continue;
+                var def = WaveCatalog.FindRecipe(t.Def.Id, o.Def.Id);
+                if (def == null) continue;
+                bool dup = false;
+                foreach (var (_, d) in list) if (d.Id == def.Id) dup = true;
+                if (!dup) list.Add((o.Id, def));
+            }
+            return list;
         }
 
         public int UpgradeCostOf(int team, Tower t)
