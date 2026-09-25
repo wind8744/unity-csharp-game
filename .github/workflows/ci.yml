@@ -1,0 +1,22 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  lint:
+    name: Basic checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check Unity project layout
+        run: |
+          test -f Packages/manifest.json
+          test -f ProjectSettings/ProjectVersion.txt
+          echo "Project layout OK"
+      - name: Check for stray Library/Temp folders
+        run: |
+          ! test -d Library
+          ! test -d Temp
