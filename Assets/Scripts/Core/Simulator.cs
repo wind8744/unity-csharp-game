@@ -95,6 +95,8 @@ namespace LaneBattle.Core
         public Dictionary<string, int> EndReasons = new Dictionary<string, int>();
         public Dictionary<int, (int placedGames, int wonWhenPlaced)> Units = new Dictionary<int, (int, int)>();
         public Dictionary<AugmentId, (int picked, int won)> Augments = new Dictionary<AugmentId, (int, int)>();
+        /// <summary>한 팀만 가진 판에서의 승률 (양 팀이 다 고르면 효과가 상쇄되므로 이쪽이 정직하다).</summary>
+        public Dictionary<AugmentId, (int games, int won)> AugmentsExclusive = new Dictionary<AugmentId, (int, int)>();
         public Dictionary<LaneRuleId, (int games, int early)> LaneRules = new Dictionary<LaneRuleId, (int, int)>();
         public Dictionary<MissionId, (int assigned, int done)> Missions = new Dictionary<MissionId, (int, int)>();
 
@@ -133,6 +135,14 @@ namespace LaneBattle.Core
                     Missions.TryGetValue(m, out var v); Missions[m] = (v.assigned + 1, v.done + (done ? 1 : 0));
                 }
             }
+            foreach (var a in Catalog.Augments)
+            {
+                bool t0 = r.Augments[0].Contains(a), t1 = r.Augments[1].Contains(a);
+                if (t0 == t1) continue;
+                int holder = t0 ? 0 : 1;
+                AugmentsExclusive.TryGetValue(a, out var v);
+                AugmentsExclusive[a] = (v.games + 1, v.won + (r.Winner == holder ? 1 : 0));
+            }
             bool early = r.Turns < 7 || (r.EndReason == "타워 2개 파괴" || r.EndReason == "전령 타워 파괴");
             for (int l = 0; l < 3; l++)
                 if (r.LaneRules[l].HasValue)
@@ -163,12 +173,13 @@ namespace LaneBattle.Core
                 sb.AppendLine($"| {u.Name} | {Pct2(v.placedGames, Games * 2)} | {Pct2(v.wonWhenPlaced, v.placedGames)} |");
             }
             sb.AppendLine();
-            sb.AppendLine("| 증강 | 선택 수 | 선택 시 승률 |");
-            sb.AppendLine("|---|---|---|");
+            sb.AppendLine("| 증강 | 선택 수 | 선택 시 승률 | 한 팀만 가진 판 수 | 그때 승률 |");
+            sb.AppendLine("|---|---|---|---|---|");
             foreach (var a in Catalog.Augments)
             {
                 Augments.TryGetValue(a, out var v);
-                sb.AppendLine($"| {a} | {v.picked} | {Pct2(v.won, v.picked)} |");
+                AugmentsExclusive.TryGetValue(a, out var x);
+                sb.AppendLine($"| {a} | {v.picked} | {Pct2(v.won, v.picked)} | {x.games} | {Pct2(x.won, x.games)} |");
             }
             sb.AppendLine();
             sb.AppendLine("| 라인 규칙 | 등장 판 수 | 등장 시 조기 종료율 |");
