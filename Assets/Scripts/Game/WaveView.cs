@@ -246,7 +246,9 @@ namespace LaneBattle.Game
         void ApplyInterpolated(UnitVisual v, float t)
         {
             var p = Vector2.Lerp(v.Prev, v.Curr, t);
-            v.Root.position = new Vector3(p.x, p.y, 0);
+            // 같은 열에 겹친 공격 유닛이 구분되도록 id 에 따라 살짝 위아래로 비껴 그린다 (시뮬레이션 좌표는 그대로)
+            float jitter = v.Unit.Kind == UnitKind.Attacker ? ((v.Unit.Id % 3) - 1) * 0.16f : 0f;
+            v.Root.position = new Vector3(p.x, p.y + jitter, 0);
             float ratio = v.Unit.MaxHp > 0 ? Mathf.Clamp01(v.Unit.Hp / (float)v.Unit.MaxHp) : 0;
             float size = v.HpBack.transform.localScale.x;
             v.HpBar.transform.localScale = new Vector3(size * ratio, 0.07f, 1);
