@@ -14,6 +14,10 @@ namespace LaneBattle.Core
         readonly List<string> _log = new List<string>();
         public IReadOnlyList<string> Log => _log;
         int _nextInstanceId = 1;
+        string _deathPhase = "place";
+
+        /// <summary>마지막으로 해결된 턴의 기록. ResolveTurn 이 새로 만든다.</summary>
+        public TurnReport LastReport { get; private set; } = new TurnReport();
 
         public GameEngine(GameConfig config, ulong seed)
         {
@@ -163,6 +167,8 @@ namespace LaneBattle.Core
                     var rule = rules[State.Rng.Next(rules.Count)];
                     State.LaneRules[lane] = rule;
                     State.UsedLaneRules.Add(rule);
+                    LastReport.RuleRevealed = rule;
+                    LastReport.RuleLane = (Lane)lane;
                     L($"라인 규칙 공개: {Names.Lane((Lane)lane)} = {Names.LaneRule(rule)}");
                 }
             }
@@ -185,6 +191,9 @@ namespace LaneBattle.Core
         public void ResolveTurn(TurnCommands cmds)
         {
             if (State.IsOver) throw new InvalidOperationException("game is over");
+            var report = new TurnReport { Turn = State.Turn };
+            LastReport = report;
+            _deathPhase = "place";
 
             // 1. 증강 선택
             for (int t = 0; t < 2; t++)
@@ -195,9 +204,10 @@ namespace LaneBattle.Core
                     var cmd = cmds.Get(t, p);
                     int idx = Math.Max(0, Math.Min(cmd.AugmentChoice, ps.Offers.Count - 1));
                     ApplyAugment(ps, ps.Offers[idx]);
+                    report.AugmentsPicked.Add((t, p, ps.Offers[idx]));
                     ps.Offers.Clear();
                 }
-            if (State.IsOver) return; // 과부하로 타워가 터질 수 있음
+            if (State.IsOver) { FinishReport(report); return; } // 과부하로 타워가 터질 수 있음
 
             // 2. 후퇴 명령
             for (int t = 0; t < 2; t++)
@@ -231,26 +241,43 @@ namespace LaneBattle.Core
                 }
             }
             ProcessDeaths();
-            if (State.IsOver) return;
+            if (State.IsOver) { FinishReport(report); return; }
 
             // 5. 전투
+            _deathPhase = "combat";
             for (int l = 0; l < 3; l++)
             {
-                ResolveCombat((Lane)l);
-                if (State.IsOver) return;
+                ResolveCombat((Lane)l, report.Combat[l]);
+                if (State.IsOver) break;
             }
+            for (int l = 0; l < 3; l++)
+                for (int t = 0; t < 2; t++)
+                {
+                    report.Combat[l].TowerHpAfter[t] = State.Teams[t].TowerHp[l];
+                    report.Combat[l].TowerDestroyed[t] = State.Teams[t].TowerDestroyed[l];
+                }
+            if (State.IsOver) { FinishReport(report); return; }
 
             // 6. 턴 종료 효과
+            _deathPhase = "end";
             EndOfTurnEffects();
-            if (State.IsOver) return;
+            if (State.IsOver) { FinishReport(report); return; }
 
             // 7. 미션
             CheckMissions();
 
             // 8. 경기 종료 판정
-            if (State.Turn >= Config.Turns) { FinalScore(); return; }
+            if (State.Turn >= Config.Turns) { FinalScore(); FinishReport(report); return; }
 
             BeginTurn();
+            FinishReport(report);
+        }
+
+        void FinishReport(TurnReport r)
+        {
+            r.GameEnded = State.IsOver;
+            r.Winner = State.Winner;
+            r.EndReason = State.EndReason;
         }
 
         void ApplyAugment(PlayerState ps, AugmentId a)
@@ -329,6 +356,7 @@ namespace LaneBattle.Core
             LaneUnits(team, lane).Add(u);
             State.Teams[team].UnitsPlaced.Add(def.Id);
             placed.Add(u);
+            LastReport.Placements.Add(new TurnReport.PlacementRecord { Team = team, Player = player, UnitName = def.Name, UnitDefId = def.Id, Lane = lane });
             L($"T{team}P{player} 배치: {def.Name} → {Names.Lane(lane)}");
             return u;
         }
@@ -344,7 +372,7 @@ namespace LaneBattle.Core
 
         // ─────────────────────────── 전투 ───────────────────────────
 
-        void ResolveCombat(Lane lane)
+        void ResolveCombat(Lane lane, TurnReport.LaneCombat rec)
         {
             var chain = new int[2];
             var towerHits = new List<int>[] { new List<int>(), new List<int>() };
@@ -388,7 +416,10 @@ namespace LaneBattle.Core
                 }
                 int towerTotal = 0;
                 foreach (var hit in towerHits[side]) towerTotal += Math.Max(0, hit - guards[enemy]);
+                rec.ChainDamage[side] = chain[side] - remaining;
+                int before = State.Teams[enemy].TowerHp[(int)lane];
                 if (towerTotal > 0) DamageTower(enemy, lane, towerTotal);
+                rec.TowerDamage[side] = before - State.Teams[enemy].TowerHp[(int)lane];
             }
 
             ProcessDeaths();
@@ -445,6 +476,7 @@ namespace LaneBattle.Core
                     var lane = LaneUnits(d.Team, d.Lane);
                     if (!lane.Remove(d)) continue;
                     State.TotalDeaths++;
+                    LastReport.Deaths.Add(new TurnReport.DeathRecord { Team = d.Team, UnitName = d.Def.Name, Lane = d.Lane, Phase = _deathPhase });
                     L($"사망: T{d.Team} {d.Def.Name} @{Names.Lane(d.Lane)}");
                     int enemy = 1 - d.Team;
 
@@ -537,6 +569,7 @@ namespace LaneBattle.Core
         {
             ps.MissionDone = true;
             ps.MissionDoneTurn = State.Turn;
+            LastReport.MissionsCompleted.Add((ps.Team, ps.Index, ps.Mission));
             ps.PendingBonusMana += 3;
             var ts = State.Teams[ps.Team];
             for (int l = 0; l < 3; l++) if (!ts.TowerDestroyed[l]) ts.TowerHp[l] += 2;

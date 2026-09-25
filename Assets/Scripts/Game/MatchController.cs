@@ -4,24 +4,31 @@ using LaneBattle.Core;
 
 namespace LaneBattle.Game
 {
+    public enum MatchPhase { Plan, Reveal, Combat }
+
     /// <summary>
     /// 사람 한 명(팀0 P0)이 두는 한 판. 나머지 자리는 AI 가 채운다. Unity 의존 없음.
-    /// UI 는 이 클래스의 상태만 보고 그리고, 여기 메서드만 호출한다.
+    /// 확정 → 공개 단계 → 전투 단계 → 다음 턴 계획 단계 순으로 UI 가 멈춰 보여줄 수 있게 단계를 관리한다.
     /// </summary>
     public sealed class MatchController
     {
         public GameEngine Engine { get; private set; }
         public GameConfig Config { get; }
         public ulong Seed { get; private set; }
-        public const int HumanTeam = 0, HumanPlayer = 0;
+        public const int HumanTeam = 0, HumanPlayer = 0, EnemyTeam = 1;
 
+        public MatchPhase Phase { get; private set; } = MatchPhase.Plan;
+        public TurnReport Report => Engine.LastReport;
         public List<Placement> Pending { get; } = new List<Placement>();
         public int SelectedHandIndex { get; private set; } = -1;
         public int AugmentChoice { get; private set; } = -1;
         public List<string> LastTurnLog { get; } = new List<string>();
+        /// <summary>턴별 상대 배치 수 [탑, 미드, 봇]. 사람이 상대 성향을 읽는 재료.</summary>
+        public List<int[]> EnemyHistory { get; } = new List<int[]>();
+        public AiStyle EnemyStyle { get; private set; }
         public event Action Changed;
 
-        readonly IAgent _ai = new GreedyAgent();
+        IAgent _ai;
         Rng _aiRng;
 
         public MatchController(ulong seed, int playersPerTeam = 1)
@@ -34,8 +41,12 @@ namespace LaneBattle.Game
         {
             Seed = seed;
             Engine = new GameEngine(Config, seed);
+            EnemyStyle = (AiStyle)(int)(seed % 3);
+            _ai = new StyleAgent(EnemyStyle, (int)(seed % 7));
             _aiRng = new Rng(seed * 31 + 7);
+            Phase = MatchPhase.Plan;
             Pending.Clear();
+            EnemyHistory.Clear();
             SelectedHandIndex = -1;
             AugmentChoice = -1;
             LastTurnLog.Clear();
@@ -43,10 +54,11 @@ namespace LaneBattle.Game
         }
 
         public PlayerState Human => Engine.Player(HumanTeam, HumanPlayer);
-        public bool NeedsAugmentChoice => Human.Offers.Count > 0 && AugmentChoice < 0;
+        public bool NeedsAugmentChoice => Phase == MatchPhase.Plan && Human.Offers.Count > 0 && AugmentChoice < 0;
         public bool IsOver => Engine.State.IsOver;
+        /// <summary>화면에 표시할 턴 번호. 공개/전투 단계에서는 방금 해결한 턴.</summary>
+        public int ShownTurn => Phase == MatchPhase.Plan ? Engine.State.Turn : Report.Turn;
 
-        /// <summary>아직 배치 예정에 쓰이지 않은 손패 (카드 id 목록, 손패 순서 유지).</summary>
         public List<int> AvailableHand()
         {
             var used = new List<int>();
@@ -78,25 +90,32 @@ namespace LaneBattle.Game
 
         public bool CanAddPending(int unitDefId, Lane lane)
         {
-            if (IsOver || !AvailableHand().Contains(unitDefId)) return false;
+            if (IsOver || Phase != MatchPhase.Plan || !AvailableHand().Contains(unitDefId)) return false;
             if (Engine.LaneUnits(HumanTeam, lane).Count + PendingCountInLane(lane) >= Engine.LaneCapacity(lane)) return false;
             return Engine.CostOf(HumanTeam, unitDefId, lane) <= ManaLeft;
         }
 
+        public int? SelectedUnitDefId
+        {
+            get
+            {
+                var hand = AvailableHand();
+                return SelectedHandIndex >= 0 && SelectedHandIndex < hand.Count ? hand[SelectedHandIndex] : (int?)null;
+            }
+        }
+
         public void SelectCard(int availableHandIndex)
         {
+            if (Phase != MatchPhase.Plan) return;
             SelectedHandIndex = SelectedHandIndex == availableHandIndex ? -1 : availableHandIndex;
             Changed?.Invoke();
         }
 
-        /// <summary>선택한 카드를 라인에 배치 예정으로 올린다. 성공하면 true.</summary>
         public bool PlaceSelected(Lane lane)
         {
-            var hand = AvailableHand();
-            if (SelectedHandIndex < 0 || SelectedHandIndex >= hand.Count) return false;
-            int id = hand[SelectedHandIndex];
-            if (!CanAddPending(id, lane)) return false;
-            Pending.Add(new Placement(id, lane));
+            var id = SelectedUnitDefId;
+            if (id == null || !CanAddPending(id.Value, lane)) return false;
+            Pending.Add(new Placement(id.Value, lane));
             SelectedHandIndex = -1;
             Changed?.Invoke();
             return true;
@@ -115,10 +134,10 @@ namespace LaneBattle.Game
             Changed?.Invoke();
         }
 
-        /// <summary>확정: 사람 명령 + AI 명령으로 한 턴을 해결한다.</summary>
+        /// <summary>확정: 사람 명령 + AI 명령으로 한 턴을 해결하고 공개 단계로 간다.</summary>
         public bool Confirm()
         {
-            if (IsOver || NeedsAugmentChoice) return false;
+            if (IsOver || Phase != MatchPhase.Plan || NeedsAugmentChoice) return false;
             var cmds = new TurnCommands(Config.PlayersPerTeam);
             var mine = new PlayerCommand { AugmentChoice = Math.Max(0, AugmentChoice) };
             mine.Placements.AddRange(Pending);
@@ -133,11 +152,33 @@ namespace LaneBattle.Game
             LastTurnLog.Clear();
             for (int i = logStart; i < Engine.Log.Count; i++) LastTurnLog.Add(Engine.Log[i]);
 
+            var hist = new int[3];
+            for (int l = 0; l < 3; l++) hist[l] = Report.PlacedCount(EnemyTeam, (Lane)l);
+            EnemyHistory.Add(hist);
+
             Pending.Clear();
             SelectedHandIndex = -1;
             AugmentChoice = -1;
+            Phase = MatchPhase.Reveal;
             Changed?.Invoke();
             return true;
+        }
+
+        /// <summary>공개 → 전투 → 다음 턴 계획으로 한 단계 진행.</summary>
+        public void Advance()
+        {
+            if (Phase == MatchPhase.Reveal) Phase = MatchPhase.Combat;
+            else if (Phase == MatchPhase.Combat) Phase = MatchPhase.Plan;
+            Changed?.Invoke();
+        }
+
+        public string EnemyHistoryText(int lastN = 3)
+        {
+            if (EnemyHistory.Count == 0) return "아직 기록 없음";
+            var parts = new List<string>();
+            for (int i = Math.Max(0, EnemyHistory.Count - lastN); i < EnemyHistory.Count; i++)
+                parts.Add($"{i + 1}턴 {EnemyHistory[i][0]}·{EnemyHistory[i][1]}·{EnemyHistory[i][2]}");
+            return string.Join("  ", parts);
         }
     }
 }

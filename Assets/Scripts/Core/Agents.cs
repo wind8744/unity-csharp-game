@@ -117,3 +117,78 @@ namespace LaneBattle.Core
         }
     }
 }
+
+namespace LaneBattle.Core
+{
+    public enum AiStyle { Aggressor, Mirror, Rotator }
+
+    /// <summary>
+    /// 읽을 수 있는 성향을 가진 상대. 사람이 지난 배치를 보고 패턴을 눈치채는 게 목적.
+    /// Aggressor: 상대의 가장 약한 타워를 계속 민다. Mirror: 상대 유닛이 가장 많은 라인에 맞선다. Rotator: 라인을 돌아가며 민다.
+    /// </summary>
+    public sealed class StyleAgent : IAgent
+    {
+        public AiStyle Style { get; }
+        public string Name => "Style:" + Style;
+        readonly int _offset;
+
+        public StyleAgent(AiStyle style, int offset = 0) { Style = style; _offset = offset; }
+
+        public PlayerCommand Decide(GameEngine engine, int team, int player, Rng rng)
+        {
+            var ps = engine.Player(team, player);
+            var cmd = new PlayerCommand();
+            if (ps.Offers.Count > 0) cmd.AugmentChoice = rng.Next(ps.Offers.Count);
+
+            int enemy = 1 - team;
+            var them = engine.Team(enemy);
+            int target = -1;
+            switch (Style)
+            {
+                case AiStyle.Aggressor:
+                    for (int l = 0; l < 3; l++)
+                        if (!them.TowerDestroyed[l] && (target < 0 || them.TowerHp[l] < them.TowerHp[target])) target = l;
+                    break;
+                case AiStyle.Mirror:
+                    int best = -1;
+                    for (int l = 0; l < 3; l++)
+                    {
+                        if (them.TowerDestroyed[l]) continue;
+                        int n = 0; foreach (var _ in engine.VisibleUnits(enemy, (Lane)l)) n++;
+                        if (n > best) { best = n; target = l; }
+                    }
+                    break;
+                case AiStyle.Rotator:
+                    for (int k = 0; k < 3; k++)
+                    {
+                        int l = (engine.State.Turn + _offset + k) % 3;
+                        if (!them.TowerDestroyed[l]) { target = l; break; }
+                    }
+                    break;
+            }
+            if (target < 0) return cmd;
+            if (rng.Next(6) == 0) target = (target + 1 + rng.Next(2)) % 3; // 가끔 딴 데
+
+            var order = new List<int> { target };
+            for (int l = 0; l < 3; l++) if (l != target && !them.TowerDestroyed[l]) order.Add(l);
+
+            var laneCount = new int[3];
+            for (int l = 0; l < 3; l++) laneCount[l] = engine.LaneUnits(team, (Lane)l).Count;
+            var hand = new List<int>(ps.Hand);
+            hand.Sort((a, b) => Catalog.Unit(b).Cost.CompareTo(Catalog.Unit(a).Cost));
+            int mana = ps.Mana;
+            foreach (var id in hand)
+                foreach (var l in order)
+                {
+                    var lane = (Lane)l;
+                    if (laneCount[l] >= engine.LaneCapacity(lane)) continue;
+                    int cost = engine.CostOf(team, id, lane);
+                    if (cost > mana) continue;
+                    mana -= cost; laneCount[l]++;
+                    cmd.Placements.Add(new Placement(id, lane));
+                    break;
+                }
+            return cmd;
+        }
+    }
+}
