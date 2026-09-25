@@ -18,6 +18,12 @@ namespace LaneBattle.Core.Wave
         public int SendCostPercent = 125;      // 보내기 비용 배율
         public int SendIncomePercent = 50;     // 보낼 때 오르는 인컴 배율 (정수 나눗셈, 최소 1)
         public int BaseHpOverride = 0;          // 0 이면 인원수 기본값
+        public int[] AugmentSeconds = { 180, 360 };   // 증강 선택 시각
+        public int AugmentPauseSeconds = 10;
+        public int[] EventSeconds = { 270, 450 };     // 이벤트 시간대 시작
+        public int EventDurationSeconds = 60;
+        public int EventWarnSeconds = 30;
+        public bool FunLayer = true;                  // 증강·이벤트·미션·시너지 켜기
 
         public int LaneWidth => PlayersPerTeam switch { 1 => 4, 2 => 6, _ => 8 };
         public int BaseHp => BaseHpOverride > 0 ? BaseHpOverride : PlayersPerTeam switch { 1 => 60, 2 => 90, _ => 120 };
@@ -38,6 +44,15 @@ namespace LaneBattle.Core.Wave
         public Rng DrawRng;
         public int Drawn, Sent, IncomeReceived;
         public int LastSendTick = -1000;
+        public HashSet<AugmentId> Augments = new HashSet<AugmentId>();
+        public List<AugmentId> Offers = new List<AugmentId>();
+        public MissionId Mission;
+        public bool MissionDone;
+        public int FreeSends;
+        public List<int> RecentSendTicks = new List<int>();
+        public List<int> RecentHeroSendTicks = new List<int>();
+        public bool Has(AugmentId a) => Augments.Contains(a);
+        public int DrawCost(MatchConfig cfg) => Has(AugmentId.Merchant) ? 3 : cfg.DrawCost;
     }
 
     public sealed class TeamEcon
@@ -46,9 +61,12 @@ namespace LaneBattle.Core.Wave
         public int Income;
         public int KillGoldCursor;
         public int TotalKills;
+        public int LastLeakTick;
+        public List<int> KillTicks = new List<int>();
+        public List<(int tick, int defId, int creepId)> RecentSends = new List<(int, int, int)>();
     }
 
-    public enum CommandType { Build, Upgrade, Sell, Draw, Send, Transfer }
+    public enum CommandType { Build, Upgrade, Sell, Draw, Send, Transfer, PickAugment }
 
     /// <summary>플레이어 명령. 락스텝에서 틱 번호와 함께 교환되는 유일한 입력.</summary>
     public struct MatchCommand
@@ -63,9 +81,10 @@ namespace LaneBattle.Core.Wave
         public static MatchCommand Draw(int team, int player) => new MatchCommand { Team = team, Player = player, Type = CommandType.Draw };
         public static MatchCommand Send(int team, int player, int handIndex) => new MatchCommand { Team = team, Player = player, Type = CommandType.Send, A = handIndex };
         public static MatchCommand Transfer(int team, int player, int toPlayer, int amount) => new MatchCommand { Team = team, Player = player, Type = CommandType.Transfer, A = toPlayer, B = amount };
+        public static MatchCommand PickAugment(int team, int player, int offerIndex) => new MatchCommand { Team = team, Player = player, Type = CommandType.PickAugment, A = offerIndex };
     }
 
-    public enum MatchEventType { Income, Drew, Sent, Built, Upgraded, Sold, KillGold, Rejected, MatchEnd }
+    public enum MatchEventType { Income, Drew, Sent, Built, Upgraded, Sold, KillGold, Rejected, MatchEnd, AugmentOffer, AugmentPicked, PauseEnd, EventWarn, EventStart, EventEnd, MissionDone, GroupSynergy }
 
     public struct MatchEvent
     {
@@ -90,21 +109,44 @@ namespace LaneBattle.Core.Wave
         public string EndReason { get; private set; } = "";
         public readonly List<MatchEvent> Events = new List<MatchEvent>();
         readonly int[] _lastKills = new int[2];
+        readonly Rng _rng;
+        public int PauseLeft { get; private set; }
+        public int AugmentRound { get; private set; }
+        public EventId? ActiveEvent { get; private set; }
+        public EventId? NextEvent { get; private set; }
+        public int EventEndTick { get; private set; }
+        public int EventStartTick { get; private set; }
+        public int EventRound { get; private set; }
+        readonly List<EventId> _eventPool = new List<EventId>();
+        public bool IsPaused => PauseLeft > 0;
 
         public MatchSim(MatchConfig cfg, ulong seed)
         {
             Cfg = cfg;
+            _rng = new Rng(seed * 977 + 3);
+            foreach (var e in FunCatalog.Events) _eventPool.Add(e);
             for (int t = 0; t < 2; t++)
             {
                 Lanes[t] = new LaneSim(cfg.MakeLaneConfig(), seed * 7 + (ulong)t + 1);
                 Teams[t] = new TeamEcon { Index = t, Income = cfg.BaseIncomePerPlayer * cfg.PlayersPerTeam };
                 Players[t] = new PlayerEcon[cfg.PlayersPerTeam];
                 for (int p = 0; p < cfg.PlayersPerTeam; p++)
-                    Players[t][p] = new PlayerEcon { Team = t, Index = p, Gold = cfg.StartGold, DrawRng = new Rng(seed * 131 + (ulong)(t * 10 + p) + 17) };
+                    Players[t][p] = new PlayerEcon { Team = t, Index = p, Gold = cfg.StartGold, DrawRng = new Rng(seed * 131 + (ulong)(t * 10 + p) + 17), Mission = FunCatalog.Missions[_rng.Next(FunCatalog.Missions.Length)] };
             }
+            ScheduleNextEvent();
         }
 
-        public int Seconds => Tick / Cfg.TicksPerSecond;
+        void ScheduleNextEvent()
+        {
+            if (!Cfg.FunLayer || EventRound >= Cfg.EventSeconds.Length || _eventPool.Count == 0) { NextEvent = null; return; }
+            NextEvent = _eventPool[_rng.Next(_eventPool.Count)];
+            _eventPool.Remove(NextEvent.Value);
+        }
+
+        public int GameTick => Lanes[0].Tick;
+        public int GameSeconds => GameTick / Cfg.TicksPerSecond;
+
+        public int Seconds => GameSeconds;
         public PlayerEcon Player(int team, int player) => Players[team][player];
         public LaneSim OwnLane(int team) => Lanes[team];
         public LaneSim EnemyLane(int team) => Lanes[1 - team];
@@ -119,29 +161,163 @@ namespace LaneBattle.Core.Wave
 
             if (commands != null) foreach (var c in commands) Apply(c);
 
+            if (PauseLeft > 0)
+            {
+                PauseLeft--;
+                if (PauseLeft == 0) EndPause();
+                return;
+            }
+
+            ApplyEventModifiers();
             for (int t = 0; t < 2; t++) Lanes[t].Step();
+            int gtick = GameTick;
+
+            if (Cfg.FunLayer)
+            {
+                if (AugmentRound < Cfg.AugmentSeconds.Length && gtick == Cfg.AugmentSeconds[AugmentRound] * Cfg.TicksPerSecond) BeginAugmentPause();
+                if (NextEvent.HasValue && EventRound < Cfg.EventSeconds.Length)
+                {
+                    int startTick = Cfg.EventSeconds[EventRound] * Cfg.TicksPerSecond;
+                    if (gtick == startTick - Cfg.EventWarnSeconds * Cfg.TicksPerSecond) Emit(MatchEventType.EventWarn, -1, -1, (int)NextEvent.Value, Cfg.EventWarnSeconds);
+                    if (gtick == startTick) BeginEvent(NextEvent.Value, startTick);
+                }
+                if (ActiveEvent.HasValue && gtick >= EventEndTick) { Emit(MatchEventType.EventEnd, -1, -1, (int)ActiveEvent.Value, 0); ActiveEvent = null; }
+                if (gtick % Cfg.TicksPerSecond == 0) CheckMissions();
+            }
 
             for (int t = 0; t < 2; t++)
             {
-                int kills = Lanes[t].Kills - _lastKills[t];
-                _lastKills[t] = Lanes[t].Kills;
+                int kills = Lanes[t].GoldKills - _lastKills[t];
+                _lastKills[t] = Lanes[t].GoldKills;
+                int goldEach = Cfg.KillGold * (ActiveEvent == EventId.GoldenAge ? 2 : 1);
                 for (int k = 0; k < kills; k++)
                 {
                     var team = Teams[t];
                     var p = Players[t][team.KillGoldCursor % Cfg.PlayersPerTeam];
                     team.KillGoldCursor++;
                     team.TotalKills++;
-                    p.Gold += Cfg.KillGold;
-                    Emit(MatchEventType.KillGold, t, p.Index, Cfg.KillGold, 0);
+                    team.KillTicks.Add(gtick);
+                    p.Gold += goldEach;
+                    Emit(MatchEventType.KillGold, t, p.Index, goldEach, 0);
                 }
+                foreach (var e in Lanes[t].Events) if (e.Type == SimEventType.Leak) { Teams[t].LastLeakTick = gtick; break; }
             }
 
-            if (Tick % (Cfg.IncomeIntervalSeconds * Cfg.TicksPerSecond) == 0) PayIncome();
+            if (gtick % (Cfg.IncomeIntervalSeconds * Cfg.TicksPerSecond) == 0) PayIncome();
 
             for (int t = 0; t < 2; t++)
                 if (Lanes[t].BaseHp <= 0) { End(1 - t, "기지 파괴"); return; }
-            if (Tick >= Cfg.MatchSeconds * Cfg.TicksPerSecond) FinalScore();
+            if (gtick >= Cfg.MatchSeconds * Cfg.TicksPerSecond) FinalScore();
         }
+
+        // ─────────────────────────── 증강 ───────────────────────────
+
+        void BeginAugmentPause()
+        {
+            AugmentRound++;
+            PauseLeft = Cfg.AugmentPauseSeconds * Cfg.TicksPerSecond;
+            for (int t = 0; t < 2; t++)
+                foreach (var p in Players[t]) OfferAugments(p);
+        }
+
+        void OfferAugments(PlayerEcon p)
+        {
+            p.Offers.Clear();
+            var pool = new List<AugmentId>();
+            foreach (var a in FunCatalog.Augments) if (!p.Has(a)) pool.Add(a);
+            for (int i = 0; i < 3 && pool.Count > 0; i++) { var a = pool[_rng.Next(pool.Count)]; pool.Remove(a); p.Offers.Add(a); }
+            Emit(MatchEventType.AugmentOffer, p.Team, p.Index, p.Offers.Count, 0);
+        }
+
+        void EndPause()
+        {
+            for (int t = 0; t < 2; t++)
+                foreach (var p in Players[t]) if (p.Offers.Count > 0) GrantAugment(p, 0);
+            Emit(MatchEventType.PauseEnd, -1, -1, 0, 0);
+        }
+
+        void GrantAugment(PlayerEcon p, int index)
+        {
+            if (index < 0 || index >= p.Offers.Count) return;
+            var a = p.Offers[index];
+            p.Offers.Clear();
+            p.Augments.Add(a);
+            var lane = Lanes[p.Team];
+            switch (a)
+            {
+                case AugmentId.Legacy: p.Gold += 25; break;
+                case AugmentId.Fortress: lane.AddBaseHp(8); break;
+                case AugmentId.Elite: foreach (var t in lane.Towers) if (t.Alive && t.Owner == p.Index) t.UpgradePercent = 80; break;
+                case AugmentId.AirNet: foreach (var t in lane.Towers) if (t.Alive && t.Owner == p.Index) t.ForceAntiAir = true; break;
+            }
+            Emit(MatchEventType.AugmentPicked, p.Team, p.Index, (int)a, 0);
+        }
+
+        // ─────────────────────────── 이벤트 시간대 ───────────────────────────
+
+        void BeginEvent(EventId e, int startTick)
+        {
+            ActiveEvent = e; EventStartTick = startTick; EventEndTick = startTick + Cfg.EventDurationSeconds * Cfg.TicksPerSecond;
+            EventRound++;
+            if (e == EventId.Earthquake) for (int t = 0; t < 2; t++) Lanes[t].SilenceAll(3 * Cfg.TicksPerSecond);
+            Emit(MatchEventType.EventStart, -1, -1, (int)e, Cfg.EventDurationSeconds);
+            ScheduleNextEvent();
+        }
+
+        void ApplyEventModifiers()
+        {
+            var mod = new LaneModifiers { KillGoldMultiplier = 1 };
+            switch (ActiveEvent)
+            {
+                case EventId.Night: mod.TowerRangeDelta10 = -10; break;
+                case EventId.Express: mod.CreepSpeedBonusPercent = 30; break;
+                case EventId.Fog: mod.FogHalfLane = true; break;
+                case EventId.GoldenAge: mod.KillGoldMultiplier = 2; break;
+            }
+            for (int t = 0; t < 2; t++) Lanes[t].Mod = mod;
+        }
+
+        // ─────────────────────────── 미션 ───────────────────────────
+
+        void CheckMissions()
+        {
+            int gtick = GameTick;
+            for (int t = 0; t < 2; t++)
+                foreach (var p in Players[t])
+                {
+                    if (p.MissionDone) continue;
+                    var lane = Lanes[t];
+                    bool done = false;
+                    switch (p.Mission)
+                    {
+                        case MissionId.Horde: done = CountWithin(p.RecentSendTicks, gtick, 5) >= 5; if (done) p.Gold += 15; break;
+                        case MissionId.IronWall: done = gtick >= 120 * Cfg.TicksPerSecond && gtick - Teams[t].LastLeakTick >= 120 * Cfg.TicksPerSecond; if (done) lane.AddBaseHp(4); break;
+                        case MissionId.Miser: break;
+                        case MissionId.Purebred:
+                            for (int tr = 0; tr < 3 && !done; tr++)
+                                if (lane.TribeCount[tr] >= 5)
+                                {
+                                    done = true;
+                                    foreach (var tw in lane.Towers) if (tw.Alive && (int)tw.Def.Tribe == tr && !tw.Upgraded) lane.Upgrade(tw.Id);
+                                }
+                            break;
+                        case MissionId.BossHunter: done = lane.LastBossKillX >= 0 && lane.LastBossKillX < lane.Cfg.Length * 1000 / 3; if (done) Lanes[1 - t].AddBaseHp(-4); break;
+                        case MissionId.Blitz: done = CountWithin(p.RecentHeroSendTicks, gtick, 5) >= 2; if (done) p.FreeSends += 3; break;
+                        case MissionId.Frugal: done = gtick >= 240 * Cfg.TicksPerSecond && AliveTowers(lane) <= 3; if (done) OfferAugments(p); break;
+                        case MissionId.Massacre: done = CountWithin(Teams[t].KillTicks, gtick, 30) >= 20; if (done) { p.Gold += 10; lane.AddBaseHp(1); } break;
+                    }
+                    if (done) { p.MissionDone = true; Emit(MatchEventType.MissionDone, t, p.Index, (int)p.Mission, 0); }
+                }
+        }
+
+        static int CountWithin(List<int> ticks, int now, int seconds)
+        {
+            int n = 0;
+            foreach (var t in ticks) if (now - t <= seconds * 20) n++;
+            return n;
+        }
+
+        static int AliveTowers(LaneSim lane) { int n = 0; foreach (var t in lane.Towers) if (t.Alive) n++; return n; }
 
         void PayIncome()
         {
@@ -151,9 +327,13 @@ namespace LaneBattle.Core.Wave
                 int share = Teams[t].Income / n, rem = Teams[t].Income % n;
                 for (int p = 0; p < n; p++)
                 {
+                    var pe = Players[t][p];
                     int amount = share + (p < rem ? 1 : 0);
-                    Players[t][p].Gold += amount;
-                    Players[t][p].IncomeReceived += amount;
+                    if (pe.Has(AugmentId.Interest)) amount += Math.Min(5, pe.Gold / 10);
+                    if (!pe.MissionDone && pe.Mission == MissionId.Miser && pe.Gold >= 50)
+                    { pe.MissionDone = true; Teams[t].Income += 4; Emit(MatchEventType.MissionDone, t, p, (int)MissionId.Miser, 0); }
+                    pe.Gold += amount;
+                    pe.IncomeReceived += amount;
                     Emit(MatchEventType.Income, t, p, amount, Teams[t].Income);
                 }
             }
@@ -185,8 +365,13 @@ namespace LaneBattle.Core.Wave
             if (c.Team < 0 || c.Team > 1 || c.Player < 0 || c.Player >= Cfg.PlayersPerTeam) return;
             var p = Players[c.Team][c.Player];
             var lane = Lanes[c.Team];
+            if (PauseLeft > 0 && c.Type != CommandType.PickAugment) { Reject(c); return; }
             switch (c.Type)
             {
+                case CommandType.PickAugment:
+                    if (p.Offers.Count == 0) { Reject(c); return; }
+                    GrantAugment(p, Math.Max(0, Math.Min(c.A, p.Offers.Count - 1)));
+                    break;
                 case CommandType.Build:
                 {
                     var def = WaveCatalog.Tower(c.A);
@@ -194,16 +379,21 @@ namespace LaneBattle.Core.Wave
                     var t = lane.Build(def, c.B, c.C, c.Player);
                     if (t == null) { Reject(c); return; }
                     p.Gold -= def.Cost;
+                    if (p.Has(AugmentId.Elite)) t.UpgradePercent = 80;
+                    if (p.Has(AugmentId.AirNet)) t.ForceAntiAir = true;
                     Emit(MatchEventType.Built, c.Team, c.Player, t.Id, def.Id);
                     break;
                 }
                 case CommandType.Upgrade:
                 {
                     var t = lane.TowerAt(c.A);
-                    if (t == null || t.Upgraded || p.Gold < t.Def.Cost) { Reject(c); return; }
-                    p.Gold -= t.Def.Cost;
+                    if (t == null || t.Upgraded) { Reject(c); return; }
+                    int upCost = UpgradeCostOf(c.Team, t);
+                    if (p.Gold < upCost) { Reject(c); return; }
+                    p.Gold -= upCost;
+                    if (p.Has(AugmentId.Elite)) t.UpgradePercent = 80;
                     lane.Upgrade(t.Id);
-                    Emit(MatchEventType.Upgraded, c.Team, c.Player, t.Id, t.Def.Cost);
+                    Emit(MatchEventType.Upgraded, c.Team, c.Player, t.Id, upCost);
                     break;
                 }
                 case CommandType.Sell:
@@ -218,8 +408,8 @@ namespace LaneBattle.Core.Wave
                 }
                 case CommandType.Draw:
                 {
-                    if (p.Gold < Cfg.DrawCost || p.Hand.Count >= Cfg.HandMax) { Reject(c); return; }
-                    p.Gold -= Cfg.DrawCost;
+                    if (p.Gold < p.DrawCost(Cfg) || p.Hand.Count >= Cfg.HandMax) { Reject(c); return; }
+                    p.Gold -= p.DrawCost(Cfg);
                     var def = RollAttacker(p.DrawRng);
                     p.Hand.Add(def.Id);
                     p.Drawn++;
@@ -230,14 +420,27 @@ namespace LaneBattle.Core.Wave
                 {
                     if (c.A < 0 || c.A >= p.Hand.Count) { Reject(c); return; }
                     var def = WaveCatalog.Attacker(p.Hand[c.A]);
-                    int cost = SendCostOf(def);
+                    if (ActiveEvent == EventId.Storm && def.Flying) { Reject(c); return; }
+                    int cost = p.FreeSends > 0 ? 0 : SendCostOf(def);
                     if (p.Gold < cost) { Reject(c); return; }
                     p.Gold -= cost;
+                    if (p.FreeSends > 0) p.FreeSends--;
                     p.Hand.RemoveAt(c.A);
-                    Teams[c.Team].Income += Math.Max(1, def.Income * Cfg.SendIncomePercent / 100);
+                    Teams[c.Team].Income += Math.Max(1, def.Income * Cfg.SendIncomePercent / 100) + (p.Has(AugmentId.Mercenaries) ? 1 : 0);
                     p.Sent++;
                     p.LastSendTick = Tick;
+                    int gtick2 = GameTick;
+                    p.RecentSendTicks.Add(gtick2);
+                    if (def.Rarity == Rarity.Hero) p.RecentHeroSendTicks.Add(gtick2);
+                    var team = Teams[c.Team];
+                    bool firstOfGroup = team.RecentSends.Count == 0 || gtick2 - team.RecentSends[team.RecentSends.Count - 1].tick > 5 * Cfg.TicksPerSecond;
                     var creep = EnemyLane(c.Team).Send(def, true, c.Team * 100 + c.Player + 1);
+                    if (p.Has(AugmentId.Venom)) { creep.MaxHp = creep.MaxHp * 125 / 100; creep.Hp = creep.MaxHp; }
+                    if (p.Has(AugmentId.Curse)) creep.SpawnCurse = true;
+                    if (p.Has(AugmentId.Corrosion)) creep.NoKillGold = true;
+                    if (p.Has(AugmentId.SilenceShell) && firstOfGroup) creep.SpawnSilenceOverride = (20, 15);
+                    team.RecentSends.Add((gtick2, def.Id, creep.Id));
+                    ApplyGroupSynergy(c.Team, creep, def);
                     Emit(MatchEventType.Sent, c.Team, c.Player, def.Id, creep.Id);
                     break;
                 }
@@ -253,7 +456,58 @@ namespace LaneBattle.Core.Wave
 
         void Reject(MatchCommand c) => Emit(MatchEventType.Rejected, c.Team, c.Player, (int)c.Type, c.A);
 
-        public int SendCostOf(AttackerDef def) => Math.Max(1, def.SendCost * Cfg.SendCostPercent / 100);
+        public int SendCostOf(AttackerDef def)
+        {
+            int cost = Math.Max(1, def.SendCost * Cfg.SendCostPercent / 100);
+            if (ActiveEvent == EventId.Bazaar) cost = Math.Max(1, cost / 2);
+            return cost;
+        }
+
+        public int UpgradeCostOf(int team, Tower t)
+        {
+            if (t == null) return 0;
+            int cost = t.Def.Cost;
+            if (t.Def.Tribe == DefTribe.Machine && Lanes[team].Machine3) cost = cost * 70 / 100;
+            return Math.Max(1, cost);
+        }
+
+        /// <summary>무리 시너지: 같은 팀이 5초 안에 연달아 보낸 유닛끼리. 새 유닛과 아직 살아 있는 무리 전원에게 적용.</summary>
+        void ApplyGroupSynergy(int team, Creep newCreep, AttackerDef def)
+        {
+            var sends = Teams[team].RecentSends;
+            int now = GameTick;
+            var enemyLane = Lanes[1 - team];
+            var group = new List<Creep>();
+            int sameName = 0; var tribeCount = new int[4];
+            for (int i = sends.Count - 1; i >= 0; i--)
+            {
+                if (now - sends[i].tick > 5 * Cfg.TicksPerSecond) break;
+                var cdef = WaveCatalog.Attacker(sends[i].defId);
+                if (cdef.Id == def.Id) sameName++;
+                tribeCount[(int)cdef.Tribe]++;
+                var creep = enemyLane.FindCreep(sends[i].creepId);
+                if (creep != null) group.Add(creep);
+            }
+            if (sameName >= 3)
+                foreach (var c in group) if (c.Def.Id == def.Id && !c.GroupNameBonus) { c.GroupNameBonus = true; int add = c.MaxHp * 20 / 100; c.MaxHp += add; c.Hp += add; Emit(MatchEventType.GroupSynergy, team, -1, c.Id, 1); }
+            for (int tr = 0; tr < 4; tr++)
+            {
+                if (tribeCount[tr] < 3) continue;
+                foreach (var c in group)
+                {
+                    if ((int)c.Def.Tribe != tr || c.GroupTribeBonus) continue;
+                    c.GroupTribeBonus = true;
+                    switch ((AtkTribe)tr)
+                    {
+                        case AtkTribe.Beast: c.SpeedPerTick = c.SpeedPerTick * 120 / 100; break;
+                        case AtkTribe.Air: { int add = c.MaxHp * 15 / 100; c.MaxHp += add; c.Hp += add; break; }
+                        case AtkTribe.Giant: c.ExtraLeak += 1; break;
+                        case AtkTribe.Dark: c.StealthLeft += Cfg.TicksPerSecond; break;
+                    }
+                    Emit(MatchEventType.GroupSynergy, team, -1, c.Id, 2 + tr);
+                }
+            }
+        }
 
         /// <summary>뽑기: 일반 60 / 희귀 30 / 영웅 10, 등급 안에서 균등.</summary>
         public static AttackerDef RollAttacker(Rng rng)

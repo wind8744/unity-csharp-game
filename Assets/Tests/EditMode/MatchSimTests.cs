@@ -120,7 +120,7 @@ namespace LaneBattle.Tests
             var b = MatchRunner.Play(cfg, 77, new IMatchAgent[] { new SimpleBot(), new SimpleBot { Aggression = 80 } });
             Assert.AreEqual(a.Hash(), b.Hash());
             Assert.IsTrue(a.IsOver);
-            Assert.LessOrEqual(a.Tick, cfg.MatchSeconds * cfg.TicksPerSecond);
+            Assert.LessOrEqual(a.GameTick, cfg.MatchSeconds * cfg.TicksPerSecond);
             Assert.Greater(a.Player(0, 0).Sent + a.Player(1, 0).Sent, 0, "봇이 유닛을 보내야 한다");
             Assert.Greater(a.OwnLane(0).Towers.Count, 0);
         }

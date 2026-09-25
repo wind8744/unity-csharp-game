@@ -28,6 +28,9 @@ namespace LaneBattle.Core.Wave
         public int Id; public TowerDef Def; public int Col, Row, Owner;
         public int X, Y;
         public bool Upgraded;
+        public int UpgradePercent = 50;     // 정예 증강이면 80
+        public bool ForceAntiAir;           // 대공망 증강
+        public int SlowedLeft, SlowedPercent; // 저주: 공속 감소
         public int BuildLeft, CooldownLeft, SilenceLeft;
         public bool Alive = true;
         public bool Ready => Alive && BuildLeft == 0 && SilenceLeft == 0;
@@ -43,6 +46,11 @@ namespace LaneBattle.Core.Wave
         public int SlowLeft, SlowPercent, StealthLeft, BurnLeft, BurnPerSec, BurnAcc, HealAcc, PeriodicLeft;
         public bool Boss, FromEnemy;
         public int GroupId;
+        public bool NoKillGold;             // 부식
+        public bool SpawnCurse;             // 저주
+        public int ExtraLeak;               // 무리 시너지(거인)
+        public bool GroupNameBonus, GroupTribeBonus;
+        public (int range10, int tenths)? SpawnSilenceOverride; // 침묵탄
         public bool Alive = true;
         public bool Stealthed => StealthLeft > 0;
     }
@@ -70,6 +78,16 @@ namespace LaneBattle.Core.Wave
         public int GoldEarned { get; private set; }
         public bool IsOver { get; private set; }
         public int NextWaveIndex { get; private set; }
+        public int GoldKills { get; private set; }     // 처치 골드 대상 (부식 제외)
+        public LaneModifiers Mod;                      // 이벤트 시간대
+        // 시너지 (매 틱 재계산)
+        public int[] TribeCount { get; } = new int[3];
+        public bool Forest3, Forest5, Fire3, Fire5, Machine3, Machine5;
+        public bool[] RowWarrior2 { get; } = new bool[3];
+        public bool[] RowArcher2 { get; } = new bool[3];
+        public bool[] RowMage2 { get; } = new bool[3];
+        public bool[] TowerFlash { get; } = new bool[3]; // (미사용)
+        public int LastBossKillX { get; private set; } = -1;
         public readonly List<Tower> Towers = new List<Tower>();
         public readonly List<Creep> Creeps = new List<Creep>();
         public readonly List<SimEvent> Events = new List<SimEvent>();
@@ -86,9 +104,18 @@ namespace LaneBattle.Core.Wave
         }
 
         public int Seconds => Tick / Cfg.TicksPerSecond;
+        public void AddBaseHp(int delta) { BaseHp = Math.Max(0, BaseHp + delta); }
+        public void SilenceAll(int ticks) { foreach (var t in Towers) if (t.Alive) t.SilenceLeft = Math.Max(t.SilenceLeft, ticks); }
         public int TicksToNextWave => Math.Max(0, NextWaveTick() - Tick);
         int NextWaveTick() => (Cfg.FirstWaveSeconds + NextWaveIndex * Cfg.WaveIntervalSeconds) * Cfg.TicksPerSecond;
         static int Milli(int cells) => cells * 1000;
+
+        public Creep FindCreep(int id)
+        {
+            foreach (var c in Creeps) if (c.Id == id) return c;
+            foreach (var (_, c) in _queue) if (c.Id == id) return c;
+            return null;
+        }
 
         public int CreepsAlive()
         {
@@ -193,6 +220,8 @@ namespace LaneBattle.Core.Wave
                 SpawnBaseWave(NextWaveIndex);
                 NextWaveIndex++;
             }
+            RecomputeSynergy();
+            if (Forest5 && Tick % (30 * Cfg.TicksPerSecond) == 0) AddBaseHp(1);
 
             for (int i = 0; i < _queue.Count; i++)
                 if (_queue[i].tick <= Tick)
@@ -202,6 +231,8 @@ namespace LaneBattle.Core.Wave
                     Creeps.Add(c);
                     Emit(SimEventType.Spawn, c.Id, -1, 0);
                     if (c.Def.SpawnSilenceTenths > 0) SilenceTowersNear(c, c.Def.SpawnSilenceRange10 * 100, c.Def.SpawnSilenceTenths * Cfg.TicksPerSecond / 10);
+                    if (c.SpawnSilenceOverride.HasValue) SilenceTowersNear(c, c.SpawnSilenceOverride.Value.range10 * 100, c.SpawnSilenceOverride.Value.tenths * Cfg.TicksPerSecond / 10);
+                    if (c.SpawnCurse) foreach (var t in Towers) if (t.Alive && Dist2(t.X, t.Y, c.X, c.Y) <= Sq(2000)) { t.SlowedLeft = 3 * Cfg.TicksPerSecond; t.SlowedPercent = 20; }
                     _queue.RemoveAt(i); i--;
                 }
 
@@ -245,6 +276,7 @@ namespace LaneBattle.Core.Wave
             foreach (var t in Towers)
             {
                 if (!t.Alive) continue;
+                if (t.SlowedLeft > 0) t.SlowedLeft--;
                 if (t.BuildLeft > 0) { t.BuildLeft--; continue; }
                 if (t.SilenceLeft > 0) { t.SilenceLeft--; continue; }
                 if (t.Def.IsSupport) continue;
@@ -256,22 +288,25 @@ namespace LaneBattle.Core.Wave
                 t.CooldownLeft = EffectiveCooldown(t);
                 int dmg = EffectiveDamage(t, target);
                 Emit(SimEventType.Attack, t.Id, target.Id, dmg);
-                if (t.Def.SplashRadius10 > 0) Splash(t, target, dmg); else Hit(t, target, dmg);
+                if (SplashRadius10(t) > 0) Splash(t, target, dmg); else Hit(t, target, dmg);
             }
+
+            FlushFireBursts();
 
             // 유닛 이동 → 누수
             foreach (var c in Creeps)
             {
                 if (!c.Alive) continue;
-                int speed = c.SpeedPerTick;
+                int speed = c.SpeedPerTick * (100 + Mod.CreepSpeedBonusPercent) / 100;
                 if (c.SlowLeft > 0 && !c.Def.SlowImmune) speed = speed * (100 - c.SlowPercent) / 100;
                 c.X += Math.Max(1, speed);
                 if (c.X >= Milli(Cfg.Length))
                 {
                     c.Alive = false;
-                    Leaked += c.Def.Leak;
-                    BaseHp -= c.Def.Leak;
-                    Emit(SimEventType.Leak, c.Id, -1, c.Def.Leak);
+                    int leak = c.Def.Leak + c.ExtraLeak;
+                    Leaked += leak;
+                    BaseHp -= leak;
+                    Emit(SimEventType.Leak, c.Id, -1, leak);
                 }
             }
             Creeps.RemoveAll(c => !c.Alive);
@@ -291,32 +326,50 @@ namespace LaneBattle.Core.Wave
 
         // ─────────────────────────── 계산 ───────────────────────────
 
-        int EffectiveRange(Tower t) => t.Def.Range10 * 100;
+        public int EffectiveRange(Tower t)
+        {
+            int r10 = t.Def.Range10;
+            if (Forest3) r10 += 5;
+            if (t.Def.Job == DefJob.Archer && RowArcher2[t.Row]) r10 += 10;
+            r10 += Mod.TowerRangeDelta10;
+            return Math.Max(10, r10) * 100;
+        }
+
+        bool IsAntiAir(Tower t) => t.Def.AntiAir || (t.ForceAntiAir && t.Def.Job == DefJob.Archer);
+
+        int MageBoost(Tower t, int percent) => t.Def.Job == DefJob.Mage && RowMage2[t.Row] ? percent * 150 / 100 : percent;
+        int SplashRadius10(Tower t) => t.Def.SplashRadius10 == 0 ? 0 : (t.Def.Job == DefJob.Mage && RowMage2[t.Row] ? t.Def.SplashRadius10 * 150 / 100 : t.Def.SplashRadius10);
 
         int EffectiveCooldown(Tower t)
         {
             int per10s = t.Def.AttacksPer10s;
-            if (t.Upgraded) per10s = per10s * 150 / 100;
+            if (t.Upgraded) per10s = per10s * (100 + t.UpgradePercent) / 100;
             if (t.Def.Tribe == DefTribe.Machine)
+            {
+                if (Machine5) per10s = per10s * 120 / 100;
                 foreach (var s in Towers)
                     if (s.Alive && s.Ready && s.Def.AuraSpeedPercentMachine > 0 && s.Id != t.Id && Dist2(s.X, s.Y, t.X, t.Y) <= Sq(s.Def.Range10 * 100))
-                    { per10s = per10s * (100 + s.Def.AuraSpeedPercentMachine) / 100; break; }
+                    { per10s = per10s * (100 + MageBoost(s, s.Def.AuraSpeedPercentMachine)) / 100; break; }
+            }
+            if (t.SlowedLeft > 0) per10s = per10s * (100 - t.SlowedPercent) / 100;
             return Math.Max(1, Cfg.TicksPerSecond * 10 / Math.Max(1, per10s));
         }
 
         int EffectiveDamage(Tower t, Creep target)
         {
             int dmg = t.Def.Atk * Cfg.TowerDamagePercent / 100;
-            if (t.Upgraded) dmg = dmg * 150 / 100;
+            if (t.Upgraded) dmg = dmg * (100 + t.UpgradePercent) / 100;
+            if (Fire3) dmg = dmg * 110 / 100;
+            if (t.Def.Job == DefJob.Warrior && RowWarrior2[t.Row]) dmg = dmg * 120 / 100;
             foreach (var s in Towers)
                 if (s.Alive && s.Ready && s.Def.AuraAtkPercent > 0 && s.Id != t.Id && Dist2(s.X, s.Y, t.X, t.Y) <= Sq(s.Def.Range10 * 100))
-                { dmg = dmg * (100 + s.Def.AuraAtkPercent) / 100; break; }
+                { dmg = dmg * (100 + MageBoost(s, s.Def.AuraAtkPercent)) / 100; break; }
             if (target.Def.Flying) dmg *= t.Def.AirMultiplier;
             if (target.Def.Tribe == AtkTribe.Giant) dmg *= t.Def.GiantMultiplier;
             return dmg;
         }
 
-        bool CanTarget(Tower t, Creep c) => c.Alive && c.X >= 0 && !c.Stealthed && (!c.Def.Flying || t.Def.AntiAir);
+        bool CanTarget(Tower t, Creep c) => c.Alive && c.X >= 0 && !c.Stealthed && (!c.Def.Flying || IsAntiAir(t));
 
         Creep ClosestToBase(Tower t, int rangeMilli)
         {
@@ -365,7 +418,7 @@ namespace LaneBattle.Core.Wave
 
         void Splash(Tower t, Creep center, int dmg)
         {
-            long r2 = Sq(t.Def.SplashRadius10 * 100);
+            long r2 = Sq(SplashRadius10(t) * 100);
             var hits = new List<Creep>();
             foreach (var c in Creeps) if (CanTarget(t, c) && Dist2(center.X, center.Y, c.X, c.Y) <= r2) hits.Add(c);
             foreach (var c in hits) Hit(t, c, dmg);
@@ -379,7 +432,40 @@ namespace LaneBattle.Core.Wave
             if (c.Hp > 0) return;
             c.Hp = 0; c.Alive = false;
             Kills++; GoldEarned++;
+            if (!c.NoKillGold) GoldKills++;
+            if (c.Boss) LastBossKillX = c.X;
             Emit(SimEventType.Death, sourceId, c.Id, 0);
+            if (Fire5) _fireBursts.Add(c);
+        }
+
+        readonly List<Creep> _fireBursts = new List<Creep>();
+
+        /// <summary>불 5 시너지: 죽은 유닛 주변 1칸에 5 피해. 연쇄는 같은 틱 안에서 한 번만.</summary>
+        void FlushFireBursts()
+        {
+            if (_fireBursts.Count == 0) return;
+            var centers = new List<Creep>(_fireBursts);
+            _fireBursts.Clear();
+            foreach (var center in centers)
+                foreach (var c in Creeps)
+                    if (c.Alive && c.X >= 0 && Dist2(center.X, center.Y, c.X, c.Y) <= Sq(1000)) ApplyDamage(c, 5, -2);
+            _fireBursts.Clear();
+        }
+
+        void RecomputeSynergy()
+        {
+            for (int i = 0; i < 3; i++) { TribeCount[i] = 0; RowWarrior2[i] = RowArcher2[i] = RowMage2[i] = false; }
+            var rowJobs = new int[3, 3];
+            foreach (var t in Towers)
+            {
+                if (!t.Alive || t.BuildLeft > 0) continue;
+                TribeCount[(int)t.Def.Tribe]++;
+                rowJobs[t.Row, (int)t.Def.Job]++;
+            }
+            Forest3 = TribeCount[0] >= 3; Forest5 = TribeCount[0] >= 5;
+            Fire3 = TribeCount[1] >= 3; Fire5 = TribeCount[1] >= 5;
+            Machine3 = TribeCount[2] >= 3; Machine5 = TribeCount[2] >= 5;
+            for (int r = 0; r < 3; r++) { RowWarrior2[r] = rowJobs[r, 0] >= 2; RowArcher2[r] = rowJobs[r, 1] >= 2; RowMage2[r] = rowJobs[r, 2] >= 2; }
         }
 
         void SilenceTowersNear(Creep c, int rangeMilli, int ticks)
