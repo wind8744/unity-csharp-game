@@ -1,8 +1,8 @@
 {
-    "name": "LaneBattle.Editor",
-    "rootNamespace": "LaneBattle.Editor",
-    "references": [ "LaneBattle.Core", "LaneBattle.Game" ],
-    "includePlatforms": [ "Editor" ],
+    "name": "LaneBattle.Game",
+    "rootNamespace": "LaneBattle.Game",
+    "references": [ "LaneBattle.Core", "Unity.InputSystem" ],
+    "includePlatforms": [],
     "excludePlatforms": [],
     "allowUnsafeCode": false,
     "overrideReferences": false,

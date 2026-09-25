@@ -163,7 +163,7 @@ namespace LaneBattle.Core
                     var rule = rules[State.Rng.Next(rules.Count)];
                     State.LaneRules[lane] = rule;
                     State.UsedLaneRules.Add(rule);
-                    L($"라인 규칙 공개: {(Lane)lane} = {rule}");
+                    L($"라인 규칙 공개: {Names.Lane((Lane)lane)} = {Names.LaneRule(rule)}");
                 }
             }
         }
@@ -226,7 +226,7 @@ namespace LaneBattle.Core
                     case Ability.SpiritBurst:
                         foreach (var e in LaneUnits(1 - u.Team, u.Lane))
                             if (!e.Hidden && !e.Protected) e.Damage += 1;
-                        L($"{u.Def.Name} 폭발: {u.Lane}");
+                        L($"{u.Def.Name} 폭발: {Names.Lane(u.Lane)}");
                         break;
                 }
             }
@@ -271,7 +271,7 @@ namespace LaneBattle.Core
                     ps.TwinsArmed = true;
                     break;
             }
-            L($"T{ps.Team}P{ps.Index} 증강: {a}");
+            L($"T{ps.Team}P{ps.Index} 증강: {Names.Augment(a)}");
         }
 
         void TryRecall(int team, int player, int instanceId)
@@ -329,7 +329,7 @@ namespace LaneBattle.Core
             LaneUnits(team, lane).Add(u);
             State.Teams[team].UnitsPlaced.Add(def.Id);
             placed.Add(u);
-            L($"T{team}P{player} 배치: {def.Name} → {lane}");
+            L($"T{team}P{player} 배치: {def.Name} → {Names.Lane(lane)}");
             return u;
         }
 
@@ -408,7 +408,7 @@ namespace LaneBattle.Core
             }
             State.TowerDamageThisTurn[team, l] += amount;
             ts.TowerHp[l] -= amount;
-            L($"T{team} {lane} 타워 -{amount} → {ts.TowerHp[l]}");
+            L($"T{team} {Names.Lane(lane)} 타워 -{amount} → {ts.TowerHp[l]}");
             if (ts.TowerHp[l] <= 0) DestroyTower(team, lane);
         }
 
@@ -419,7 +419,7 @@ namespace LaneBattle.Core
             if (ts.TowerDestroyed[l]) return;
             ts.TowerHp[l] = 0;
             ts.TowerDestroyed[l] = true;
-            L($"T{team} {lane} 타워 파괴");
+            L($"T{team} {Names.Lane(lane)} 타워 파괴");
 
             int attacker = 1 - team;
             if (lane == Lane.Mid)
@@ -445,7 +445,7 @@ namespace LaneBattle.Core
                     var lane = LaneUnits(d.Team, d.Lane);
                     if (!lane.Remove(d)) continue;
                     State.TotalDeaths++;
-                    L($"사망: T{d.Team} {d.Def.Name} @{d.Lane}");
+                    L($"사망: T{d.Team} {d.Def.Name} @{Names.Lane(d.Lane)}");
                     int enemy = 1 - d.Team;
 
                     if (d.Def.Ability == Ability.ImpDeathSting)
@@ -540,7 +540,7 @@ namespace LaneBattle.Core
             ps.PendingBonusMana += 3;
             var ts = State.Teams[ps.Team];
             for (int l = 0; l < 3; l++) if (!ts.TowerDestroyed[l]) ts.TowerHp[l] += 2;
-            L($"T{ps.Team}P{ps.Index} 미션 달성: {ps.Mission}");
+            L($"T{ps.Team}P{ps.Index} 미션 달성: {Names.Mission(ps.Mission)}");
         }
 
         void FinalScore()
