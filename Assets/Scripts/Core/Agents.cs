@@ -83,8 +83,8 @@ namespace LaneBattle.Core
                 foreach (var u in engine.LaneUnits(team, lane)) ours += engine.EffectiveAtk(u) + engine.Hp(u);
                 foreach (var u in engine.VisibleUnits(enemy, lane)) theirs += engine.EffectiveAtk(u) + engine.Hp(u);
                 score[l] = (theirs - ours) * 1.0
-                         + (engine.Config.TowerHp - me.TowerHp[l]) * 0.6
-                         + (engine.Config.TowerHp - them.TowerHp[l]) * 0.6
+                         + (engine.Config.EffectiveTowerHp - me.TowerHp[l]) * 0.6
+                         + (engine.Config.EffectiveTowerHp - them.TowerHp[l]) * 0.6
                          + (theirs == 0 ? 3 : 0);
                 if (me.TowerDestroyed[l]) score[l] -= 500; // 이미 잃은 라인은 방어 의미 없음
                 var rule = engine.State.RuleAt(lane);

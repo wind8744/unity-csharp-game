@@ -6,13 +6,19 @@ namespace LaneBattle.Core
     {
         public int PlayersPerTeam = 2;
         public int Turns = 7;
-        public int TowerHp = 15;
+        public int TowerHp = 15;          // 2v2 타워 체력
+        public int SoloTowerHp = 10;      // 1v1 타워 체력 (시뮬 v0.1: 15는 너무 굼뜸)
+        public int AttritionDeaths = 20;  // 소모전 미션 조건 (시뮬 v0.1: 8은 공짜)
+        public int OverloadTowerCost = 2; // 과부하 증강의 타워 체력 대가 (시뮬 v0.1: 3은 손해)
         public int LaneCap = 4;
         public int CanyonCap = 2;
         public int StartHand = 3;
         public int HandMax = 7;
         public int HighGroundCap = 5;
         public bool EnableLog = false;
+
+        /// <summary>인원수에 따른 실제 타워 체력.</summary>
+        public int EffectiveTowerHp => PlayersPerTeam == 1 ? SoloTowerHp : TowerHp;
     }
 
     public sealed class UnitInstance
@@ -102,7 +108,7 @@ namespace LaneBattle.Core
                 var team = new TeamState { Index = t, Players = new PlayerState[cfg.PlayersPerTeam] };
                 for (int p = 0; p < cfg.PlayersPerTeam; p++)
                     team.Players[p] = new PlayerState { Team = t, Index = p };
-                for (int l = 0; l < 3; l++) team.TowerHp[l] = cfg.TowerHp;
+                for (int l = 0; l < 3; l++) team.TowerHp[l] = cfg.EffectiveTowerHp;
                 Teams[t] = team;
             }
         }

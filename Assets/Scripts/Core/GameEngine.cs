@@ -262,7 +262,7 @@ namespace LaneBattle.Core
             {
                 case AugmentId.Overload:
                     ps.Mana += 1;
-                    for (int l = 0; l < 3; l++) if (!team.TowerDestroyed[l]) { team.TowerHp[l] -= 3; if (team.TowerHp[l] <= 0) DestroyTower(ps.Team, (Lane)l); }
+                    for (int l = 0; l < 3; l++) if (!team.TowerDestroyed[l]) { team.TowerHp[l] -= Config.OverloadTowerCost; if (team.TowerHp[l] <= 0) DestroyTower(ps.Team, (Lane)l); }
                     break;
                 case AugmentId.TopKeeper:
                     if (!team.TowerDestroyed[(int)Lane.Top]) team.TowerHp[(int)Lane.Top] += 5;
@@ -519,7 +519,7 @@ namespace LaneBattle.Core
                         case MissionId.Disguise: done = ps.LaneStreak >= 3; break;
                         case MissionId.Balance: done = lanes.Count == 3; break;
                         case MissionId.Restraint: done = State.Turn >= 3 && ps.ManaSpentThisTurn == 0; break;
-                        case MissionId.Attrition: done = State.TotalDeaths >= 8; break;
+                        case MissionId.Attrition: done = State.TotalDeaths >= Config.AttritionDeaths; break;
                         case MissionId.Purebred:
                             foreach (var lane in State.Teams[t].Lanes)
                             {

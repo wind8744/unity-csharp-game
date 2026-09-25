@@ -23,7 +23,7 @@ namespace LaneBattle.Core
     public enum AugmentId
     {
         Abundance,  // 풍요: 매 턴 드로우 +1
-        Overload,   // 과부하: 매 턴 마나 +1, 아군 타워 전체 -3
+        Overload,   // 과부하: 매 턴 마나 +1, 아군 타워 전체 -2
         TopKeeper,  // 탑 지킴이: 탑 타워 +5
         Retreat,    // 후퇴 명령: 턴당 1회 내 유닛 하나를 손패로
         Twins,      // 쌍둥이: 다음 1코스트 유닛 복사
@@ -52,6 +52,6 @@ namespace LaneBattle.Core
         Balance,    // 한 턴에 세 라인 모두 배치
         Restraint,  // 3턴 이후 어느 턴에 마나 0 사용
         Purebred,   // 한 라인에 같은 계열 아군 4명
-        Attrition,  // 경기 중 죽은 유닛 8명 이상 (양 팀 합산)
+        Attrition,  // 경기 중 죽은 유닛 20명 이상 (양 팀 합산)
     }
 }
