@@ -12,6 +12,24 @@ namespace LaneBattle.Editor
     {
         public const string ScenePath = "Assets/Scenes/Prototype.unity";
         public const string WaveScenePath = "Assets/Scenes/WaveProto.unity";
+        public const string MatchScenePath = "Assets/Scenes/MatchProto.unity";
+
+        [MenuItem("LaneBattle/Build Match Prototype Scene")]
+        public static void BuildMatch()
+        {
+            var scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
+            var cam = new GameObject("Main Camera", typeof(Camera), typeof(AudioListener));
+            cam.tag = "MainCamera";
+            cam.transform.position = new Vector3(0, 0, -10);
+            new GameObject("MatchView", typeof(MatchView));
+            EditorSceneManager.SaveScene(scene, MatchScenePath);
+
+            var scenes = new List<EditorBuildSettingsScene>();
+            foreach (var s in EditorBuildSettings.scenes) if (s.path != MatchScenePath) scenes.Add(s);
+            scenes.Insert(0, new EditorBuildSettingsScene(MatchScenePath, true));
+            EditorBuildSettings.scenes = scenes.ToArray();
+            Debug.Log($"씬 생성: {MatchScenePath}");
+        }
 
         [MenuItem("LaneBattle/Build Wave Prototype Scene")]
         public static void BuildWave()
