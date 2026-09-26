@@ -74,13 +74,24 @@ namespace LaneBattle.Core.Wave
         public static readonly TowerDef[] BasicTowers = System.Array.FindAll(Towers, t => t.Tier == 1);
         public static readonly TowerDef[] FusedTowers = System.Array.FindAll(Towers, t => t.Tier == 2);
 
-        /// <summary>뽑기 등급 확률 (%): 시간이 갈수록 희귀·영웅·전설로 이동. (일반, 희귀, 영웅, 전설)</summary>
-        public static (int common, int rare, int hero, int legend) DrawOdds(int seconds) =>
-            seconds < 120 ? (70, 25, 5, 0) :
-            seconds < 240 ? (55, 30, 15, 0) :
-            seconds < 360 ? (42, 32, 20, 6) :
-                            (32, 32, 24, 12);
-        public const int LegendUnlockSeconds = 240;
+        /// <summary>뽑기 등급 확률 (%) — 롤토체스처럼 플레이어 레벨이 정한다. (일반, 희귀, 영웅, 전설). 문서 v0.4 14절.</summary>
+        public static (int common, int rare, int hero, int legend) DrawOdds(int level) => level switch
+        {
+            <= 1 => (80, 20, 0, 0),
+            2 => (70, 28, 2, 0),
+            3 => (60, 32, 8, 0),
+            4 => (50, 34, 14, 2),
+            5 => (42, 34, 19, 5),
+            6 => (35, 33, 23, 9),
+            7 => (28, 32, 27, 13),
+            8 => (22, 30, 30, 18),
+            _ => (15, 28, 32, 25),
+        };
+        public const int MaxLevel = 9;
+        /// <summary>다음 레벨까지 필요한 경험치 (레벨 1 → 2 부터).</summary>
+        public static int XpToNext(int level) => level switch { <= 1 => 2, 2 => 4, 3 => 8, 4 => 12, 5 => 20, 6 => 30, 7 => 44, 8 => 60, _ => int.MaxValue };
+        public const int XpPerIncome = 2;       // 수입 때마다 자동 경험치
+        public const int XpBuyCost = 4, XpBuyAmount = 4;  // 골드로 경험치 사기
 
         /// <summary>두 타워 정의로 만들 수 있는 합성 타워. 순서 무관. 없으면 null.</summary>
         public static TowerDef FindRecipe(int defA, int defB)
