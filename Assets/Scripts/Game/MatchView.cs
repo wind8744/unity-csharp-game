@@ -35,7 +35,7 @@ namespace LaneBattle.Game
         Transform _ui, _hand, _shop, _actionPanel, _augmentPanel, _infoPanel, _resultPanel, _recipePanel, _menuPanel;
         Text _time, _wave, _myHp, _enemyHp, _gold, _income, _banner, _msg, _handTitle, _selectedInfo, _mission, _synergy, _eventText, _intel, _team;
         Image _myHpBar, _enemyHpBar;
-        Button _sendUp, _xpBtn; Text _drawInfo, _levelText;
+        Button _sendUp, _xpBtn, _handFuseBtn; Text _drawInfo, _levelText;
         // 건설 (스타 방식): B → 목록, 단축키/클릭 → 커서에 타워 그림(고스트) → 빈 칸 클릭
         SpriteRenderer _ghost; int _ghostTowerId = -1; Transform _buildMenu; bool _buildMenuOpen; int _hoveredCard = -1;
         static readonly (Key key, string label)[] BuildKeys = { (Key.Q, "Q"), (Key.W, "W"), (Key.E, "E"), (Key.R, "R"), (Key.A, "A"), (Key.S, "S"), (Key.D, "D"), (Key.F, "F"), (Key.G, "G") };
@@ -70,6 +70,7 @@ namespace LaneBattle.Game
                 if (a == "-recipes") ToggleRecipes();
                 if (a == "-buildmenu") ToggleBuildMenu();
                 if (a == "-ghost") StartGhost(5);
+                if (a == "-combo") { var hp = Sim.Player(MyTeam, MyPlayer); hp.Hand.Clear(); hp.Hand.Add(1); hp.Hand.Add(3); hp.Hand.Add(1); hp.Hand.Add(6); hp.Hand.Add(1); BuildHand(); }
                 if (a == "-menu") ToggleMenu();
             }
             for (int i = 0; i < args.Length - 1; i++)
@@ -283,6 +284,7 @@ namespace LaneBattle.Game
                     if (ev.Team == MyTeam) ShowMsg(ev.B == 1 ? "무리 시너지: 같은 유닛 3마리 → 체력 +20%" : ev.B == 2 ? "무리 시너지: 야수 3 → 속도 +20%" : ev.B == 3 ? "무리 시너지: 공중 3 → 체력 +15%" : ev.B == 4 ? "무리 시너지: 거인 3 → 누수 +1" : "무리 시너지: 암흑 3 → 은신 +1초");
                     break;
                 case MatchEventType.HandFused:
+                    if (mine || ev.Team == MyTeam) _lastHandVersion = -1;
                     if (mine)
                     {
                         var hd = WaveCatalog.Attacker(ev.A);
@@ -340,7 +342,15 @@ namespace LaneBattle.Game
                     if (kb.dKey.wasPressedThisFrame) Draw();
                     if (kb.fKey.wasPressedThisFrame) BuyXp();
                     if (kb.wKey.wasPressedThisFrame && _hoveredCard >= 0) SendCard(_hoveredCard);
+                    if (kb.rKey.wasPressedThisFrame) HandFuse();
                     if (kb.bKey.wasPressedThisFrame) ToggleBuildMenu();
+                    if (_selectedTower >= 0 && _pick == PickMode.None)
+                    {
+                        if (kb.uKey.wasPressedThisFrame) Upgrade();
+                        if (kb.xKey.wasPressedThisFrame) Sell();
+                        if (kb.cKey.wasPressedThisFrame) MergeHotkey();
+                        if (kb.vKey.wasPressedThisFrame) FuseHotkey();
+                    }
                 }
             }
             var mouse = Mouse.current;
@@ -481,6 +491,38 @@ namespace LaneBattle.Game
         public void Transfer(int toPlayer, int amount) { _pending.Add(MatchCommand.Transfer(MyTeam, MyPlayer, toPlayer, amount)); }
         public void UpgradeSends() { if (!Sim.IsOver) _pending.Add(MatchCommand.UpgradeSends(MyTeam, MyPlayer)); }
         public void BuyXp() { if (!Sim.IsOver) _pending.Add(MatchCommand.BuyXp(MyTeam, MyPlayer)); }
+
+        /// <summary>R: 커서 아래 카드가 속한 조합, 아니면 완성된 첫 조합을 합친다.</summary>
+        public void HandFuse()
+        {
+            if (Sim.IsOver) return;
+            var p = Sim.Player(MyTeam, MyPlayer);
+            int want = 0;
+            if (_hoveredCard >= 0 && _hoveredCard < p.Hand.Count)
+                foreach (var (result, parts, _) in WaveCatalog.HandRecipes)
+                    if (System.Array.IndexOf(parts, p.Hand[_hoveredCard]) >= 0 && Sim.HandRecipeReady(p, result) != null) { want = result; break; }
+            if (want == 0 && Sim.HandRecipeReady(p) == null) { ShowMsg("완성된 손패 조합이 없습니다 (합성표 → 손패 조합)"); Sfx.Play("error", 0.4f); return; }
+            _pending.Add(MatchCommand.HandFuse(MyTeam, MyPlayer, want));
+        }
+
+        /// <summary>C: 선택한 타워 ★ 합치기 (짝이 셋 넘으면 고르기).</summary>
+        void MergeHotkey()
+        {
+            var t = Sim.OwnLane(MyTeam).TowerAt(_selectedTower); if (t == null) return;
+            var mates = Sim.MergeCandidates(MyTeam, t);
+            if (mates.Count < 2 || t.Star >= 3) { ShowMsg("합칠 같은 타워가 부족합니다 (같은 정의·같은 별 3개)"); Sfx.Play("error", 0.4f); return; }
+            if (mates.Count > 2) BeginPick(PickMode.Merge, mates); else Merge();
+        }
+
+        /// <summary>V: 선택한 타워 합성 (첫 레시피; 짝이 여럿이면 고르기).</summary>
+        void FuseHotkey()
+        {
+            var t = Sim.OwnLane(MyTeam).TowerAt(_selectedTower); if (t == null) return;
+            var opts = Sim.FuseOptions(MyTeam, t);
+            if (opts.Count == 0) { ShowMsg("합성할 짝이 없습니다 (합성표 참고)"); Sfx.Play("error", 0.4f); return; }
+            var partners = Sim.FusePartners(MyTeam, t, opts[0].result.Id);
+            if (partners.Count > 1) BeginPick(PickMode.Fuse, partners, opts[0].result.Id); else Fuse(opts[0].partnerId);
+        }
         void TogglePause() { if (Net != null) { ShowMsg("온라인에서는 정지할 수 없습니다"); return; } _paused = !_paused; ShowMsg(_paused ? "정지 (스페이스로 계속)" : "계속"); }
 
         // ─────────────────────────── HUD ───────────────────────────
@@ -574,6 +616,8 @@ namespace LaneBattle.Game
             _sendUp = UiKit.SpriteButton(ui, "SendUp", 324, 654, 126, 34, "", UpgradeSends, "ui_button_green", 11);
             _drawInfo = UiKit.Label(ui, "DrawInfo", 456, 654, 104, 34, "", 9, TextAnchor.MiddleLeft, UiKit.InkSoft);
             _levelText = UiKit.Label(ui, "LevelText", 340, 510, 216, 18, "", 11, TextAnchor.MiddleRight, UiKit.Ink);
+            _handFuseBtn = UiKit.SpriteButton(ui, "HandFuse", 16, 618, 260, 30, "", HandFuse, "ui_button_blue", 12);
+            _handFuseBtn.gameObject.SetActive(false);
 
             UiKit.Label(ui, "ShopTitle", 574, 510, 450, 18, "타워 — 클릭하거나 B 로 목록을 열고 글자 키 → 커서에 뜬 타워를 빈 칸에 클릭", 11, TextAnchor.MiddleLeft, UiKit.Ink);
             _shop = UiKit.Rect(ui, "Shop", 574, 530, 450, 66);
@@ -665,6 +709,20 @@ namespace LaneBattle.Game
                 UiKit.Label(img.transform, "Stat", 2, 95, cw - 4, 16, $"체력{d.Hp} 누수{d.Leak}", 8, TextAnchor.MiddleCenter, UiKit.InkSoft);
             }
             if (p.Hand.Count == 0) UiKit.Label(_hand, "Empty", 0, 40, 540, 30, "손패가 비었습니다. [뽑기]로 공격 유닛을 뽑으세요.", 13, TextAnchor.MiddleLeft, UiKit.InkSoft);
+            // 완성된 조합의 카드에 빛나는 테두리 + [R] 힌트
+            var ready = Sim.HandRecipeReady(p);
+            if (_handFuseBtn != null) _handFuseBtn.gameObject.SetActive(ready != null);
+            if (ready != null)
+            {
+                var (result, indices) = ready.Value;
+                foreach (var ci in indices)
+                {
+                    var card = _hand.Find("C" + ci); if (card == null) continue;
+                    var glow = UiKit.SpritePanel(card, "Glow", -4, -4, cw + 8, ch + 8, "tile_slot_hover", new Color(1f, 0.6f, 1f, 0.9f));
+                    glow.raycastTarget = false; glow.transform.SetAsFirstSibling();
+                }
+                if (_handFuseBtn != null) _handFuseBtn.GetComponentInChildren<Text>().text = $"[R] 손패 합성 → {WaveCatalog.Attacker(result).Name}";
+            }
         }
 
         void BuildActionPanel()
@@ -684,12 +742,12 @@ namespace LaneBattle.Game
             UiKit.Label(_actionPanel, "Name", 0, 0, 450, 18, $"{t.Def.Name} {star}{(t.Upgraded ? " [강화됨]" : "")} — {TowerInfo.Describe(t.Def)}", 11, TextAnchor.MiddleLeft, UiKit.Ink);
             float x = 0;
             int upCost = Sim.UpgradeCostOf(MyTeam, t);
-            var up = UiKit.SpriteButton(_actionPanel, "Up", x, 22, 110, 30, t.Upgraded ? "강화 완료" : $"강화 {upCost}골드", Upgrade, "ui_button_green", 12);
+            var up = UiKit.SpriteButton(_actionPanel, "Up", x, 22, 110, 30, t.Upgraded ? "강화 완료" : $"[U] 강화 {upCost}골드", Upgrade, "ui_button_green", 12);
             up.interactable = !t.Upgraded && p.Gold >= upCost; x += 116;
-            UiKit.SpriteButton(_actionPanel, "Sell", x, 22, 100, 30, $"판매 +{MatchSim.SellValueOf(t)}", Sell, "ui_button_grey", 12); x += 106;
+            UiKit.SpriteButton(_actionPanel, "Sell", x, 22, 100, 30, $"[X] 판매 +{MatchSim.SellValueOf(t)}", Sell, "ui_button_grey", 12); x += 106;
             var mateIds = Sim.MergeCandidates(MyTeam, t);
             bool canMerge = mateIds.Count >= 2 && t.Star < 3;
-            var mg = UiKit.SpriteButton(_actionPanel, "Merge", x, 22, 110, 30, t.Star >= 3 ? "★★★ 최대" : mateIds.Count > 2 ? $"★{t.Star + 1} 합치기 (고르기)" : $"★{t.Star + 1} 합치기",
+            var mg = UiKit.SpriteButton(_actionPanel, "Merge", x, 22, 110, 30, t.Star >= 3 ? "★★★ 최대" : mateIds.Count > 2 ? $"[C] ★{t.Star + 1} 합치기 (고르기)" : $"[C] ★{t.Star + 1} 합치기",
                 () => { if (mateIds.Count > 2) BeginPick(PickMode.Merge, mateIds); else Merge(); }, "ui_button", mateIds.Count > 2 ? 10 : 12);
             mg.interactable = canMerge; x += 116;
             var opts = Sim.FuseOptions(MyTeam, t);
@@ -701,7 +759,7 @@ namespace LaneBattle.Game
                 var (partner, result) = opts[i];
                 var partners = Sim.FusePartners(MyTeam, t, result.Id);
                 bool many = partners.Count > 1;
-                UiKit.SpriteButton(_actionPanel, "Fuse" + i, i * 150, fy, 146, 28, many ? $"합성 → {result.Name} (고르기)" : $"합성 → {result.Name}",
+                UiKit.SpriteButton(_actionPanel, "Fuse" + i, i * 150, fy, 146, 28, (i == 0 ? "[V] " : "") + (many ? $"합성 → {result.Name} (고르기)" : $"합성 → {result.Name}"),
                     () => { if (many) BeginPick(PickMode.Fuse, partners, result.Id); else Fuse(partner); }, "ui_button_blue", many ? 10 : 11);
             }
         }

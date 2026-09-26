@@ -91,7 +91,7 @@ namespace LaneBattle.Core.Wave
         public List<(int tick, int defId, int creepId)> RecentSends = new List<(int, int, int)>();
     }
 
-    public enum CommandType { Build, Upgrade, Sell, Draw, Send, Transfer, PickAugment, Merge, Fuse, UpgradeSends, BuyXp }
+    public enum CommandType { Build, Upgrade, Sell, Draw, Send, Transfer, PickAugment, Merge, Fuse, UpgradeSends, BuyXp, HandFuse }
 
     /// <summary>플레이어 명령. 락스텝에서 틱 번호와 함께 교환되는 유일한 입력.</summary>
     public struct MatchCommand
@@ -107,6 +107,8 @@ namespace LaneBattle.Core.Wave
         public static MatchCommand Send(int team, int player, int handIndex) => new MatchCommand { Team = team, Player = player, Type = CommandType.Send, A = handIndex };
         public static MatchCommand Transfer(int team, int player, int toPlayer, int amount) => new MatchCommand { Team = team, Player = player, Type = CommandType.Transfer, A = toPlayer, B = amount };
         public static MatchCommand PickAugment(int team, int player, int offerIndex) => new MatchCommand { Team = team, Player = player, Type = CommandType.PickAugment, A = offerIndex };
+        /// <summary>손패 합성: 완성된 조합(있으면 첫 번째, A>0 이면 그 결과 id 의 조합)을 히든 카드로 합친다.</summary>
+        public static MatchCommand HandFuse(int team, int player, int resultId = 0) => new MatchCommand { Team = team, Player = player, Type = CommandType.HandFuse, A = resultId };
         /// <summary>경험치 사기: XpBuyCost 골드 → XpBuyAmount 경험치.</summary>
         public static MatchCommand BuyXp(int team, int player) => new MatchCommand { Team = team, Player = player, Type = CommandType.BuyXp };
         /// <summary>돌격 강화: 팀의 보내기 레벨을 1 올린다 (비용은 UpgradeSendsCost).</summary>
@@ -377,21 +379,40 @@ namespace LaneBattle.Core.Wave
 
         static int AliveTowers(LaneSim lane) { int n = 0; foreach (var t in lane.Towers) if (t.Alive) n++; return n; }
 
-        /// <summary>손패에 조합이 완성됐으면 재료를 빼고 히든 카드를 넣는다 (연쇄 가능). 문서 v0.4 17절.</summary>
-        void TryHandFusion(PlayerEcon p)
+        /// <summary>손패에 완성된 조합이 있으면 (결과 id, 재료 인덱스). resultId 를 주면 그 조합만. 문서 v0.4 17절.</summary>
+        public (int result, List<int> indices)? HandRecipeReady(PlayerEcon p, int resultId = 0)
         {
-            if (!Cfg.HandFusion) return;
-            for (int guard = 0; guard < 4; guard++)
+            if (!Cfg.HandFusion) return null;
+            if (resultId <= 0) return WaveCatalog.FindHandRecipe(p.Hand);
+            foreach (var (result, parts, _) in WaveCatalog.HandRecipes)
             {
-                var found = WaveCatalog.FindHandRecipe(p.Hand);
-                if (found == null) return;
-                var (result, indices) = found.Value;
-                indices.Sort();
-                for (int i = indices.Count - 1; i >= 0; i--) p.Hand.RemoveAt(indices[i]);
-                p.Hand.Add(result);
-                p.HiddenMade.Add(result);
-                Emit(MatchEventType.HandFused, p.Team, p.Index, result, p.Hand.Count - 1);
+                if (result != resultId) continue;
+                var used = new List<int>();
+                bool ok = true;
+                foreach (var need in parts)
+                {
+                    int found = -1;
+                    for (int i = 0; i < p.Hand.Count; i++) if (p.Hand[i] == need && !used.Contains(i)) { found = i; break; }
+                    if (found < 0) { ok = false; break; }
+                    used.Add(found);
+                }
+                if (ok) return (result, used);
             }
+            return null;
+        }
+
+        /// <summary>손패 합성 (명령으로만, 사람이 R/버튼으로 고른다 — 재료를 따로 보낼 수도 있게).</summary>
+        bool DoHandFusion(PlayerEcon p, int resultId)
+        {
+            var found = HandRecipeReady(p, resultId);
+            if (found == null) return false;
+            var (result, indices) = found.Value;
+            indices.Sort();
+            for (int i = indices.Count - 1; i >= 0; i--) p.Hand.RemoveAt(indices[i]);
+            p.Hand.Add(result);
+            p.HiddenMade.Add(result);
+            Emit(MatchEventType.HandFused, p.Team, p.Index, result, p.Hand.Count - 1);
+            return true;
         }
 
         /// <summary>경험치를 주고 레벨업 처리 (넘치는 경험치는 이월).</summary>
@@ -544,7 +565,6 @@ namespace LaneBattle.Core.Wave
                     p.Hand.Add(def.Id);
                     p.Drawn++;
                     Emit(MatchEventType.Drew, c.Team, c.Player, def.Id, p.Hand.Count - 1);
-                    TryHandFusion(p);
                     break;
                 }
                 case CommandType.Send:
@@ -575,6 +595,11 @@ namespace LaneBattle.Core.Wave
                     team.RecentSends.Add((gtick2, def.Id, creep.Id));
                     ApplyGroupSynergy(c.Team, creep, def);
                     Emit(MatchEventType.Sent, c.Team, c.Player, def.Id, creep.Id);
+                    break;
+                }
+                case CommandType.HandFuse:
+                {
+                    if (!DoHandFusion(p, c.A)) { Reject(c); return; }
                     break;
                 }
                 case CommandType.BuyXp:

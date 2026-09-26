@@ -219,24 +219,23 @@ namespace LaneBattle.Tests
             // 뽑기로는 절대 안 나온다
             var rng = new Rng(3);
             for (int i = 0; i < 2000; i++) Assert.AreNotEqual(Rarity.Hidden, MatchSim.RollAttacker(rng, 9).Rarity);
-            // 손패에 늑대 둘 + 다른 것, 그리고 세 번째 늑대가 들어오면 거대 늑대로
-            p.Hand.Clear(); p.Hand.Add(1); p.Hand.Add(3); p.Hand.Add(1);
-            p.DrawRng = new Rng(1);
-            int guard = 0;
-            while (!p.Hand.Contains(16) && guard++ < 200)
-            {
-                p.Gold = 100;
-                m.Step(L(MatchCommand.Draw(0, 0)));
-                if (p.Hand.Count >= p.HandMax(m.Cfg)) { for (int i = p.Hand.Count - 1; i >= 0; i--) if (p.Hand[i] != 1 && p.Hand[i] != 16) { p.Hand.RemoveAt(i); break; } }
-            }
+            // 늑대 셋이 손패에 있어도 저절로 합쳐지진 않는다 (따로 보낼 수도 있게); R/명령으로 합친다
+            p.Hand.Clear(); p.Hand.Add(1); p.Hand.Add(3); p.Hand.Add(1); p.Hand.Add(1);
+            p.Gold = 100; m.Step(L(MatchCommand.Draw(0, 0)));
+            Assert.AreEqual(3, p.Hand.FindAll(h => h == 1).Count, "뽑아도 자동 합성은 없다");
+            Assert.IsNotNull(m.HandRecipeReady(p));
+            m.Step(L(MatchCommand.HandFuse(0, 0)));
             Assert.IsTrue(p.Hand.Contains(16), "늑대 셋 → 거대 늑대");
             Assert.AreEqual(0, p.Hand.FindAll(h => h == 1).Count, "재료 늑대는 사라진다");
             Assert.IsTrue(p.HiddenMade.Contains(16));
-            // 직접 짜맞춘 손패: 드래곤 + 흑마법사 → 재앙의 용 (뽑기 한 번에 검사)
-            p.Hand.Clear(); p.Hand.Add(9); p.Hand.Add(11);
-            p.Gold = 100; m.Step(L(MatchCommand.Draw(0, 0)));
+            Assert.IsTrue(m.Events.Exists(e => e.Type == MatchEventType.HandFused && e.A == 16));
+            m.Step(L(MatchCommand.HandFuse(0, 0)));
+            Assert.IsTrue(m.Events.Exists(e => e.Type == MatchEventType.Rejected), "완성된 조합이 없으면 거절");
+            // 특정 조합 지정: 드래곤 + 흑마법사 → 재앙의 용
+            p.Hand.Clear(); p.Hand.Add(9); p.Hand.Add(11); p.Hand.Add(1); p.Hand.Add(1); p.Hand.Add(1);
+            m.Step(L(MatchCommand.HandFuse(0, 0, 20)));
             Assert.IsTrue(p.Hand.Contains(20));
-            Assert.IsTrue(m.Events.Exists(e => e.Type == MatchEventType.HandFused && e.A == 20) || p.HiddenMade.Contains(20));
+            Assert.AreEqual(3, p.Hand.FindAll(h => h == 1).Count, "지정한 조합만 합쳐진다");
             // 보낼 수 있다
             int idx16 = p.Hand.IndexOf(20);
             m.Step(L(MatchCommand.Send(0, 0, idx16)));
