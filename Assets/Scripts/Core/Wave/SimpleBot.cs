@@ -14,8 +14,6 @@ namespace LaneBattle.Core.Wave
     /// </summary>
     public sealed class SimpleBot : IMatchAgent
     {
-        static readonly (int col, int row)[] SlotOrder4 = { (1, 0), (2, 0), (1, 1), (2, 1), (0, 0), (3, 0), (0, 1), (3, 1), (1, 2), (2, 2), (0, 2), (3, 2) };
-
         public int Aggression = 50; // 0~100. 높을수록 보내기에 골드를 더 쓴다
 
         public void Decide(MatchSim sim, int team, int player, List<MatchCommand> output)
@@ -51,8 +49,8 @@ namespace LaneBattle.Core.Wave
                 else if (towers < wantTowers) towerId = PickGeneral(towers, p.Gold);
                 if (towerId > 0 && p.Gold >= WaveCatalog.Tower(towerId).Cost)
                 {
-                    var (col, row) = slots[0];
-                    output.Add(MatchCommand.Build(team, player, towerId, col, row));
+                    var (x, y) = slots[0];
+                    output.Add(MatchCommand.Build(team, player, towerId, x, y));
                     return;
                 }
             }
@@ -119,23 +117,18 @@ namespace LaneBattle.Core.Wave
             return 1;                                      // 궁수
         }
 
+        /// <summary>빈 자리를 경로 커버 수(사거리 2.5 안 경로 칸 수)가 큰 순으로. 굽이 안쪽 구석이 먼저 나온다.</summary>
         static List<(int, int)> FreeSlots(LaneSim lane)
         {
-            var list = new List<(int, int)>();
-            if (lane.Cfg.Width == 4)
-            {
-                foreach (var (c, r) in SlotOrder4) if (lane.TowerAt(c, r) == null) list.Add((c, r));
-                return list;
-            }
-            int mid = lane.Cfg.Width / 2;
-            for (int r = 0; r < lane.Cfg.Rows; r++)
-                for (int d = 0; d < lane.Cfg.Width; d++)
-                {
-                    int c = mid + (d % 2 == 0 ? d / 2 : -(d / 2 + 1));
-                    if (c < 0 || c >= lane.Cfg.Width) continue;
-                    if (lane.TowerAt(c, r) == null) list.Add((c, r));
-                }
-            return list;
+            var map = lane.Map;
+            var list = new List<(int x, int y, int cov)>();
+            for (int x = 0; x < map.W; x++)
+                for (int y = 0; y < map.H; y++)
+                    if (lane.CanBuildAt(x, y) && map.Coverage[x, y] > 0) list.Add((x, y, map.Coverage[x, y]));
+            list.Sort((a, b) => a.cov != b.cov ? b.cov.CompareTo(a.cov) : a.y != b.y ? a.y.CompareTo(b.y) : a.x.CompareTo(b.x));
+            var result = new List<(int, int)>(list.Count);
+            foreach (var (x, y, _) in list) result.Add((x, y));
+            return result;
         }
     }
 

@@ -105,9 +105,9 @@ namespace LaneBattle.Game
                 }
             }
             var lane = Sim.Lanes[0].Cfg;
-            float gap = lane.Width + 1.6f;
-            _enemyLane = new LaneRenderer(transform, Sim.OwnLane(EnemyTeam), new Vector2(0, gap), false, "상대 라인  (내가 보낸 유닛 →)" + TeamNames(EnemyTeam));
-            _myLane = new LaneRenderer(transform, Sim.OwnLane(MyTeam), Vector2.zero, true, "내 라인  (상대 유닛 →)  빈 칸 클릭: 짓기 · 타워 클릭: 강화/합성" + TeamNames(MyTeam));
+            float gap = lane.Map.W + 1.5f;   // 나란히: 내 맵 왼쪽, 상대 맵 오른쪽
+            _enemyLane = new LaneRenderer(transform, Sim.OwnLane(EnemyTeam), new Vector2(gap, 0), false, "상대 진영 (내가 보낸 유닛)" + TeamNames(EnemyTeam));
+            _myLane = new LaneRenderer(transform, Sim.OwnLane(MyTeam), Vector2.zero, true, "내 진영 · 빈 칸 클릭: 짓기 · 타워 클릭: 강화/합성" + TeamNames(MyTeam));
             _myLane.LocalPlayer = _enemyLane.LocalPlayer = MyPlayer;
             _myLane.Banner += t => ShowBanner(t);
             _myLane.PlaySounds = _enemyLane.PlaySounds = !BotPlaysHuman || !Application.isBatchMode;
@@ -118,7 +118,7 @@ namespace LaneBattle.Game
             if (_menuPanel != null) _menuPanel.gameObject.SetActive(false);
             Sfx.Music("bgm_battle");
             RefreshHud(); BuildHand(); RefreshShop();
-            ShowMsg("타워를 골라 내 라인 빈 칸에 짓고, [뽑기]로 뽑은 유닛을 보내 상대를 압박하세요. 같은 타워 3개는 합쳐서 ★2!", 8f);
+            ShowMsg("타워를 골라 경로 옆 빈 칸에 짓고(굽이 안쪽이 효율적), [뽑기]로 뽑은 유닛을 보내 상대를 압박하세요. 같은 타워 3개는 합쳐서 ★2!", 8f);
         }
 
         public void FastForward(float seconds)
@@ -309,7 +309,7 @@ namespace LaneBattle.Game
             bool left = mouse.leftButton.wasPressedThisFrame, right = mouse.rightButton.wasPressedThisFrame;
             if (!left && !right || overUi) return;
             if (!onSlot) { if (left) SelectTower(-1); return; }
-            var existing = Sim.OwnLane(MyTeam).TowerAt(col, row);
+            var existing = Sim.OwnLane(MyTeam).TowerAtCell(col, row);
             if (left)
             {
                 if (existing == null) { SelectTower(-1); _pending.Add(MatchCommand.Build(MyTeam, MyPlayer, SelectedTowerId, col, row)); }
@@ -370,16 +370,18 @@ namespace LaneBattle.Game
             cam.orthographic = true;
             cam.clearFlags = CameraClearFlags.SolidColor;
             cam.backgroundColor = new Color(0.36f, 0.62f, 0.34f);
-            float totalH = gap + lane.Width + 1.2f;               // 두 라인 + 제목 여백
-            const float topPx = 56f, bottomPx = 500f;             // 라인이 들어갈 화면 세로 구간 (720 기준)
+            var map = lane.Map;
+            float totalH = map.H + 1.6f;                          // 맵 + 제목 여백
+            float totalW = gap + map.W + 1.0f;                    // 두 맵 나란히
+            const float topPx = 56f, bottomPx = 500f;             // 맵이 들어갈 화면 세로 구간 (720 기준)
             float lanePx = bottomPx - topPx;
             float unitsPerPixelH = totalH / lanePx;
-            float unitsPerPixelW = (lane.Length + 3.2f) / 1280f;
+            float unitsPerPixelW = totalW / 1280f;
             float upp = Mathf.Max(unitsPerPixelH, unitsPerPixelW);
             cam.orthographicSize = upp * 720f / 2f;
-            float lanesCenterWorld = (gap + lane.Width) / 2f - 0.2f;
+            float centerWorldY = map.H / 2f + 0.1f;
             float targetCenterPixel = (topPx + bottomPx) / 2f;
-            cam.transform.position = new Vector3(lane.Length / 2f + 0.5f, lanesCenterWorld + (targetCenterPixel - 360f) * upp, -10);
+            cam.transform.position = new Vector3((gap + map.W) / 2f, centerWorldY + (targetCenterPixel - 360f) * upp, -10);
         }
 
         void BuildHud()
@@ -673,15 +675,10 @@ namespace LaneBattle.Game
             var lane = Sim.OwnLane(MyTeam);
             string tribe = $"숲 {lane.TribeCount[0]}{(lane.Forest5 ? "★★" : lane.Forest3 ? "★" : "")}  불 {lane.TribeCount[1]}{(lane.Fire5 ? "★★" : lane.Fire3 ? "★" : "")}  기계 {lane.TribeCount[2]}{(lane.Machine5 ? "★★" : lane.Machine3 ? "★" : "")}";
             var rows = new List<string>();
-            for (int r = 0; r < 3; r++)
-            {
-                string tag = "";
-                if (lane.RowWarrior2[r]) tag += "전사 ";
-                if (lane.RowArcher2[r]) tag += "궁수 ";
-                if (lane.RowMage2[r]) tag += "마법사 ";
-                if (tag.Length > 0) rows.Add($"{(r == 0 ? "앞" : r == 1 ? "중" : "뒤")}:{tag.Trim()}");
-            }
-            string job = rows.Count == 0 ? "같은 줄 같은 직업 2개 → 직업 시너지" : string.Join(" · ", rows);
+            if (lane.JobPairs[0] > 0) rows.Add($"전사 {lane.JobPairs[0]}");
+            if (lane.JobPairs[1] > 0) rows.Add($"궁수 {lane.JobPairs[1]}");
+            if (lane.JobPairs[2] > 0) rows.Add($"마법사 {lane.JobPairs[2]}");
+            string job = rows.Count == 0 ? "같은 직업 타워를 옆에 붙이면 직업 시너지" : "직업 짝: " + string.Join(" · ", rows);
             return $"시너지: {tribe} (★3 ★★5)\n{job}";
         }
 
