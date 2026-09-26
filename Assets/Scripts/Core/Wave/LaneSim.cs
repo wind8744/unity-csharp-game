@@ -201,17 +201,17 @@ namespace LaneBattle.Core.Wave
             return r;
         }
 
-        /// <summary>레시피에 맞는 타워 두 개를 합성 타워로 바꾼다. 결과는 a 자리에, 즉시 완성, ★1. 강화는 둘 중 하나라도 있으면 유지.</summary>
+        /// <summary>레시피에 맞는 같은 별 타워 두 개를 합성 타워로 바꾼다. 결과는 a 자리에, 즉시 완성, 별은 재료와 같다 (★2+★2 → ★2). 강화는 둘 중 하나라도 있으면 유지.</summary>
         public Tower Fuse(int aId, int bId)
         {
             var a = FindTower(aId); var b = FindTower(bId);
-            if (a == null || b == null || a.Id == b.Id) return null;
+            if (a == null || b == null || a.Id == b.Id || a.Star != b.Star) return null;
             var def = WaveCatalog.FindRecipe(a.Def.Id, b.Def.Id);
             if (def == null) return null;
             var r = new Tower
             {
                 Id = _nextId++, Def = def, Cx = a.Cx, Cy = a.Cy, Owner = a.Owner, X = a.X, Y = a.Y,
-                Star = 1, Upgraded = a.Upgraded || b.Upgraded, UpgradePercent = Math.Max(a.UpgradePercent, b.UpgradePercent),
+                Star = a.Star, Upgraded = a.Upgraded || b.Upgraded, UpgradePercent = Math.Max(a.UpgradePercent, b.UpgradePercent),
                 ForceAntiAir = a.ForceAntiAir || b.ForceAntiAir,
             };
             a.Alive = b.Alive = false;

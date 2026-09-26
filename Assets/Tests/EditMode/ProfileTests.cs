@@ -76,8 +76,15 @@ namespace LaneBattle.Tests
             m.Step(new List<MatchCommand> { MatchCommand.Build(0, 0, 1, 0, 0), MatchCommand.Build(0, 0, 4, 3, 0) });
             var lane = m.OwnLane(0);
             m.Step(new List<MatchCommand> { MatchCommand.Fuse(0, 0, lane.TowerAtCell(0, 0).Id, lane.TowerAtCell(3, 0).Id) });
-            Assert.IsTrue(lane.TowerAtCell(0, 0).Upgraded, "연금술: 합성 결과 즉시 강화");
+            Assert.IsFalse(lane.TowerAtCell(0, 0).Upgraded, "연금술은 ★3 이 될 때만");
             Assert.AreEqual(1, p.FusedKinds.Count);
+            // 궁수 9개 → ★3 이 되는 순간 연금술로 강화
+            p.Gold = 500;
+            for (int i = 0; i < 9; i++) m.Step(new List<MatchCommand> { MatchCommand.Build(0, 0, 1, 4 + i, 0) });
+            for (int k = 0; k < 3; k++) m.Step(new List<MatchCommand> { MatchCommand.Merge(0, 0, lane.TowerAtCell(4 + k * 3, 0).Id) });
+            m.Step(new List<MatchCommand> { MatchCommand.Merge(0, 0, lane.TowerAtCell(4, 0).Id) });
+            var s3 = lane.TowerAtCell(4, 0);
+            Assert.AreEqual(3, s3.Star); Assert.IsTrue(s3.Upgraded, "연금술: ★3 즉시 강화");
         }
 
         [Test]

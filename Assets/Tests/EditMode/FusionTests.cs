@@ -194,5 +194,41 @@ namespace LaneBattle.Tests
             Assert.AreEqual(27 * 80 / 100, MatchSim.SellValueOf(t3));
             Assert.AreEqual(0, sim.FuseOptions(0, t3).Count, "3단계는 더 못 합친다 (별 올리기는 가능)");
         }
+
+        [Test]
+        public void FusionNeedsSameStarAndKeepsIt_UpgradeOnlyForStar3()
+        {
+            var sim = NewMatch();
+            // ★2 궁수 + ★1 창탑 → 거절, ★2 궁수 + ★2 창탑 → ★2 불화살 사수
+            Run(sim, MatchCommand.Build(0, 0, 1, 0, 0), MatchCommand.Build(0, 0, 1, 1, 0), MatchCommand.Build(0, 0, 1, 2, 0), MatchCommand.Build(0, 0, 4, 3, 0));
+            var lane = sim.OwnLane(0);
+            Run(sim, MatchCommand.Merge(0, 0, lane.TowerAtCell(0, 0).Id));
+            var archer2 = lane.TowerAtCell(0, 0); Assert.AreEqual(2, archer2.Star);
+            Assert.AreEqual(0, sim.FuseOptions(0, archer2).Count, "별이 다르면 합성 짝이 아니다");
+            Run(sim, MatchCommand.Fuse(0, 0, archer2.Id, lane.TowerAtCell(3, 0).Id));
+            Assert.IsTrue(sim.Events.Exists(e => e.Type == MatchEventType.Rejected));
+            Assert.IsNotNull(lane.TowerAtCell(3, 0));
+            Run(sim, MatchCommand.Build(0, 0, 4, 4, 0), MatchCommand.Build(0, 0, 4, 5, 0));
+            Run(sim, MatchCommand.Merge(0, 0, lane.TowerAtCell(3, 0).Id));
+            var spear2 = lane.TowerAtCell(3, 0); Assert.AreEqual(2, spear2.Star);
+            Assert.AreEqual(1, sim.FuseOptions(0, archer2).Count);
+            Run(sim, MatchCommand.Fuse(0, 0, archer2.Id, spear2.Id));
+            var fused = lane.TowerAtCell(0, 0);
+            Assert.AreEqual(10, fused.Def.Id); Assert.AreEqual(2, fused.Star, "★2 + ★2 → ★2 합성 타워");
+            // 강화는 ★3 만
+            var p = sim.Player(0, 0); p.Gold = 500;
+            Run(sim, MatchCommand.Upgrade(0, 0, fused.Id));
+            Assert.IsFalse(fused.Upgraded); Assert.IsTrue(sim.Events.Exists(e => e.Type == MatchEventType.Rejected));
+            for (int i = 0; i < 6; i++) Run(sim, MatchCommand.Build(0, 0, 1, 6 + i, 0));
+            Run(sim, MatchCommand.Merge(0, 0, lane.TowerAtCell(6, 0).Id));
+            Run(sim, MatchCommand.Merge(0, 0, lane.TowerAtCell(9, 0).Id));
+            Run(sim, MatchCommand.Build(0, 0, 1, 12, 0), MatchCommand.Build(0, 0, 1, 13, 0), MatchCommand.Build(0, 0, 1, 12, 2));
+            Run(sim, MatchCommand.Merge(0, 0, lane.TowerAtCell(12, 0).Id));
+            Run(sim, MatchCommand.Merge(0, 0, lane.TowerAtCell(6, 0).Id));
+            var star3 = lane.TowerAtCell(6, 0);
+            Assert.AreEqual(3, star3.Star);
+            Run(sim, MatchCommand.Upgrade(0, 0, star3.Id));
+            Assert.IsTrue(star3.Upgraded, "★3 은 강화된다");
+        }
     }
 }
