@@ -28,12 +28,14 @@ Assets/
     Wave/MatchSim.cs           한 판: 두 라인, 골드·인컴·손패, 증강·이벤트·미션, 명령 처리
     Wave/FunDefs.cs            증강·이벤트·미션 정의
     Wave/SimpleBot.cs          봇 (팀원·상대)
+    Meta/Profile.cs            전적·해금 (조건 비공개, 비밀 증강·맵·칭호)
     Net/Wire.cs                온라인 메시지 직렬화
     Net/Transport.cs           TCP 직결 전송 (+ 테스트용 루프백)
     Net/NetSession.cs          로비 + 호스트 중계 락스텝 (턴마다 명령 교환, 해시 검증)
   Scripts/Game/                Unity 표현층
     GameFlow.cs                타이틀 ↔ 경기
-    TitleScreen.cs             타이틀 (모드 선택, 온라인, 게임 방법, 합성표, 소리)
+    TitleScreen.cs             타이틀 (모드 선택, 온라인, 해금 도감·맵·봇 선택, 게임 방법, 합성표, 소리)
+    ProfileStore.cs            프로필 저장 (persistentDataPath/profile.txt)
     OnlineLobby.cs             온라인 로비 (방 만들기 / 참가, 팀 배치, 채팅)
     MatchView.cs               경기 HUD·입력·행동 패널·증강·결과
     LaneRenderer.cs            라인 그리기: 스프라이트 애니메이션, 투사체, 이펙트, 데미지 숫자, 효과음

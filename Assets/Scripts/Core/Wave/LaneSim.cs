@@ -34,6 +34,7 @@ namespace LaneBattle.Core.Wave
         public int SlowedLeft, SlowedPercent; // 저주: 공속 감소
         public int BuildLeft, CooldownLeft, SilenceLeft;
         public bool JobAdj;                 // 직업 시너지: 8방향 이웃에 같은 직업 타워
+        public bool StarBlessed;            // 비밀 증강 별의 축복
         public bool Alive = true;
         public bool Ready => Alive && BuildLeft == 0 && SilenceLeft == 0;
         public int TargetId = -1;
@@ -408,6 +409,7 @@ namespace LaneBattle.Core.Wave
         {
             int dmg = t.Def.Atk * Cfg.TowerDamagePercent / 100;
             dmg = dmg * WaveCatalog.StarPercent(t.Star) / 100;
+            if (t.StarBlessed && t.Star >= 2) dmg = dmg * 110 / 100;
             if (t.Upgraded) dmg = dmg * (100 + t.UpgradePercent) / 100;
             if (Fire3) dmg = dmg * 110 / 100;
             if (t.Def.Job == DefJob.Warrior && t.JobAdj) dmg = dmg * 120 / 100;

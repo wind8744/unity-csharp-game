@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using LaneBattle.Core.Meta;
 using LaneBattle.Core.Net;
 using LaneBattle.Core.Wave;
 using UnityEngine;
@@ -56,6 +57,7 @@ namespace LaneBattle.Game
             foreach (var a in args)
             {
                 if (a == "-select") { foreach (var t in Sim.OwnLane(MyTeam).Towers) if (t.Alive && t.Owner == MyPlayer) { SelectTower(t.Id); break; } }
+                if (a == "-nosave") GameSession.NoSave = true;
                 if (a == "-recipes") ToggleRecipes();
                 if (a == "-menu") ToggleMenu();
             }
@@ -91,7 +93,11 @@ namespace LaneBattle.Game
             }
             else
             {
-                var cfg = new MatchConfig { PlayersPerTeam = PlayersPerTeam };
+                var profile = ProfileStore.Current;
+                var cfg = new MatchConfig { PlayersPerTeam = PlayersPerTeam, AllowedSecretAugments = profile.AllowedSecretAugments() };
+                var chosen = MapCatalog.ByName(GameSession.MapName);
+                if (chosen != null && profile.UnlockedMaps().Contains(chosen.Name)) cfg.MapOverride = chosen;
+                if (GameSession.HardBot && profile.HardBotUnlocked) GameSession.BotAggression = 85;
                 Sim = new MatchSim(cfg, Seed);
                 _bots = new IMatchAgent[2][];
                 for (int t = 0; t < 2; t++)
@@ -648,8 +654,25 @@ namespace LaneBattle.Game
                 $"보낸 유닛 {p.Sent} · 뽑기 {p.Drawn} · 받은 수입 {p.IncomeReceived}\n" +
                 $"팀 인컴 {Sim.Teams[MyTeam].Income} (상대 {Sim.Teams[EnemyTeam].Income}) · ★타워 {myStars} · 합성 타워 {myFused}\n" +
                 $"증강: {AugmentList(p)}   미션: {FunCatalog.MissionName(p.Mission)} {(p.MissionDone ? "달성" : "미달성")}";
-            UiKit.Label(r, "Stats", 40, 110, 520, 150, stats, 13, TextAnchor.UpperLeft, Color.white);
-            UiKit.Label(r, "Record", 0, 270, 600, 20, $"전적 {GameSession.Wins}승 {GameSession.MatchesPlayed - GameSession.Wins}패", 12, TextAnchor.MiddleCenter, new Color(0.8f, 0.8f, 0.9f));
+            UiKit.Label(r, "Stats", 40, 104, 520, 150, stats, 13, TextAnchor.UpperLeft, Color.white);
+            // 해금 (여러 판에 걸친 비밀 조건)
+            var summary = new MatchSummary
+            {
+                Win = win, Online = Net != null, PlayersPerTeam = PlayersPerTeam, MyBaseHp = my.BaseHp, MyBaseMax = my.Cfg.BaseHp, MyLeaked = my.Leaked,
+                MaxStar = p.MaxStar, FusedKinds = p.FusedKinds.Count, Sent = p.Sent, Kills = my.Kills, MissionDone = p.MissionDone ? p.Mission : (MissionId?)null, Seconds = Sim.Seconds,
+            };
+            foreach (var t in my.Towers) if (t.Alive && t.Owner == MyPlayer && t.Star > summary.MaxStar) summary.MaxStar = t.Star;
+            var profile = ProfileStore.Current;
+            var fresh = profile.Apply(summary);
+            if (!GameSession.NoSave) ProfileStore.Save();
+            if (fresh.Count > 0)
+            {
+                var sb = new System.Text.StringBuilder("★ 해금! ");
+                foreach (var u in fresh) sb.Append($"[{u.Name}] {u.Reward}   ");
+                UiKit.Label(r, "Unlock", 20, 262, 560, 36, sb.ToString(), 13, TextAnchor.MiddleCenter, UiKit.Gold);
+                Sfx.Play("mission", 0.9f);
+            }
+            UiKit.Label(r, "Record", 0, 298, 600, 20, $"전적 {profile.Wins}승 {profile.Matches - profile.Wins}패" + (profile.Title.Length > 0 ? $" · 칭호 {profile.Title}" : ""), 12, TextAnchor.MiddleCenter, new Color(0.8f, 0.8f, 0.9f));
             if (Net == null) UiKit.SpriteButton(r, "Again", 120, 320, 170, 40, "다시 하기", () => { Seed++; Restart(); }, "ui_button_green", 15);
             UiKit.SpriteButton(r, "Title", Net == null ? 310 : 215, 320, 170, 40, "타이틀로", () => OnExit?.Invoke(), "ui_button_grey", 15);
         }
