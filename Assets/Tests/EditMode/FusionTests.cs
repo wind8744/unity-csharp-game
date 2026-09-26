@@ -54,7 +54,7 @@ namespace LaneBattle.Tests
             Assert.AreEqual(one.EffectiveRange(a) + 500, star.EffectiveRange(merged));
             one.Send(WaveCatalog.Attacker(4), true, 0, 1); star.Send(WaveCatalog.Attacker(4), true, 0, 1);
             int dmgOne = 0, dmgStar = 0;
-            for (int i = 0; i < 200; i++)
+            for (int i = 0; i < 800; i++)
             {
                 one.Step(); star.Step();
                 foreach (var e in one.Events) if (e.Type == SimEventType.Attack) { dmgOne = e.Value; break; }

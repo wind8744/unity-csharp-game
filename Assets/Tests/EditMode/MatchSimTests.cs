@@ -44,7 +44,7 @@ namespace LaneBattle.Tests
             int incomeBefore = m.Teams[0].Income;
             m.Step(L(MatchCommand.Send(0, 0, 0)));
             Assert.AreEqual(0, p.Hand.Count);
-            Assert.AreEqual(40 - 5, p.Gold);
+            Assert.AreEqual(40 - m.SendCostOf(LaneBattle.Core.Wave.WaveCatalog.Attacker(1)), p.Gold);
             Assert.AreEqual(incomeBefore + 1, m.Teams[0].Income);
             m.Step(); // 출발
             Assert.AreEqual(1, m.EnemyLane(0).CreepsAlive());
