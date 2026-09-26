@@ -128,7 +128,7 @@ namespace LaneBattle.Core.Net
                 {
                     var s = Wire.ReadStart(p);
                     s.MySlot = Array.IndexOf(s.SlotPlayer, MyPlayerId);
-                    Lobby.PlayersPerTeam = s.PlayersPerTeam; Lobby.SlotPlayer = s.SlotPlayer; Lobby.MapName = s.MapName;
+                    Lobby.PlayersPerTeam = s.PlayersPerTeam; Lobby.SlotPlayer = s.SlotPlayer; Lobby.MapName = s.MapName; Lobby.SharedTowers = s.SharedTowers;
                     TurnTicks = s.TurnTicks;
                     Start = s;
                     MatchStarted?.Invoke(s);
@@ -214,6 +214,15 @@ namespace LaneBattle.Core.Net
             LobbyChanged?.Invoke();
         }
 
+        /// <summary>호스트가 타워 공유 모드를 켜고 끈다. 로비에 방송.</summary>
+        public void SetSharedTowers(bool shared)
+        {
+            if (!IsHost || InMatch) return;
+            Lobby.SharedTowers = shared;
+            Transport.Broadcast(MsgType.Lobby, Wire.Lobby(Lobby));
+            LobbyChanged?.Invoke();
+        }
+
         public void SendChat(string text)
         {
             string line = $"{MyName}: {text}";
@@ -224,7 +233,7 @@ namespace LaneBattle.Core.Net
         public void StartMatch(ulong seed)
         {
             if (!IsHost || InMatch) return;
-            var s = new StartInfo { Seed = seed, PlayersPerTeam = Lobby.PlayersPerTeam, SlotPlayer = (int[])Lobby.SlotPlayer.Clone(), TurnTicks = TurnTicks, MySlot = Lobby.SlotOf(0), MapName = Lobby.MapName ?? "" };
+            var s = new StartInfo { Seed = seed, PlayersPerTeam = Lobby.PlayersPerTeam, SlotPlayer = (int[])Lobby.SlotPlayer.Clone(), TurnTicks = TurnTicks, MySlot = Lobby.SlotOf(0), MapName = Lobby.MapName ?? "", SharedTowers = Lobby.SharedTowers };
             s.SlotSecrets = new List<int>[s.SlotPlayer.Length];
             for (int i = 0; i < s.SlotPlayer.Length; i++)
             {
@@ -241,7 +250,7 @@ namespace LaneBattle.Core.Net
         /// <summary>시작 정보로 시뮬을 만들고 붙인다. 호스트는 봇 자리에 봇을 둔다.</summary>
         public MatchSim CreateSim(int botAggression = 65)
         {
-            var cfg = new MatchConfig { PlayersPerTeam = Start.PlayersPerTeam };
+            var cfg = new MatchConfig { PlayersPerTeam = Start.PlayersPerTeam, SharedTowers = Start.SharedTowers && Start.PlayersPerTeam > 1 };
             var map = MapCatalog.ByName(Start.MapName ?? "");
             if (map != null) cfg.MapOverride = map;
             if (Start.SlotSecrets != null && Start.SlotSecrets.Length == Start.SlotPlayer.Length)

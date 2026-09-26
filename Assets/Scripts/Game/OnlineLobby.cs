@@ -131,7 +131,9 @@ namespace LaneBattle.Game
                     int nn = n;
                     UiKit.SpriteButton(a, "Mode" + n, 60 + (n - 1) * 90, 28, 84, 32, $"{n} vs {n}", () => Session.SetPlayersPerTeam(nn), lobby.PlayersPerTeam == n ? "ui_button" : "ui_button_grey", 13);
                 }
-                UiKit.Label(a, "ModeHint", 340, 30, 600, 30, "사람 이름을 누르면 다음 빈 자리로 옮깁니다 (팀 바꾸기). 빈 자리는 봇.", 11, TextAnchor.MiddleLeft, UiKit.InkSoft);
+                UiKit.Label(a, "ModeHint", 340, 30, 380, 30, "이름을 누르면 다음 빈 자리로 (팀 바꾸기). 빈 자리는 봇.", 11, TextAnchor.MiddleLeft, UiKit.InkSoft);
+                if (lobby.PlayersPerTeam > 1)
+                    UiKit.SpriteButton(a, "Share", 720, 28, 220, 32, lobby.SharedTowers ? "타워 공유: 팀 타워 누구나 합성" : "타워 각자: 내 타워만 합성", () => Session.SetSharedTowers(!lobby.SharedTowers), lobby.SharedTowers ? "ui_button_blue" : "ui_button_grey", 11);
                 var maps = ProfileStore.Current.UnlockedMaps();
                 if (maps.Count > 0)
                 {
@@ -147,7 +149,7 @@ namespace LaneBattle.Game
             }
             else
             {
-                UiKit.Label(a, "Wait", 0, 0, 940, 22, $"{lobby.PlayersPerTeam} vs {lobby.PlayersPerTeam} · 맵 {(string.IsNullOrEmpty(lobby.MapName) ? "기본" : lobby.MapName)} — 호스트가 시작하길 기다리는 중… (핑 {Mathf.Max(0, Session.PingMs)}ms)", 14, TextAnchor.MiddleLeft, UiKit.Ink);
+                UiKit.Label(a, "Wait", 0, 0, 940, 22, $"{lobby.PlayersPerTeam} vs {lobby.PlayersPerTeam} · 맵 {(string.IsNullOrEmpty(lobby.MapName) ? "기본" : lobby.MapName)}{(lobby.PlayersPerTeam > 1 ? (lobby.SharedTowers ? " · 타워 공유" : " · 타워 각자") : "")} — 호스트가 시작하길 기다리는 중… (핑 {Mathf.Max(0, Session.PingMs)}ms)", 14, TextAnchor.MiddleLeft, UiKit.Ink);
             }
             for (int team = 0; team < 2; team++)
             {

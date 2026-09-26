@@ -25,6 +25,7 @@ namespace LaneBattle.Core.Net
         /// <summary>슬롯 = 팀 t 의 p 번 자리 → 인덱스 t * PlayersPerTeam + p. 값은 플레이어 id, 봇이면 -1.</summary>
         public int[] SlotPlayer = { 0, -1 };
         public string MapName = "";                       // 호스트가 고른 맵 (빈 값 = 인원수 기본 맵)
+        public bool SharedTowers;                         // 호스트가 고른 타워 공유 모드 (팀전)
         public int SlotCount => PlayersPerTeam * 2;
         public int SlotOf(int playerId) { for (int i = 0; i < SlotPlayer.Length; i++) if (SlotPlayer[i] == playerId) return i; return -1; }
         public (int team, int player) SlotPos(int slot) => (slot / PlayersPerTeam, slot % PlayersPerTeam);
@@ -39,6 +40,7 @@ namespace LaneBattle.Core.Net
         public int TurnTicks = 4;
         public int MySlot;      // 받는 쪽에서 채운다
         public string MapName = "";
+        public bool SharedTowers;
         public List<int>[] SlotSecrets;   // 슬롯별 해금한 비밀 증강 (AugmentId 정수). 각자 자기 해금만 받는다
     }
 
@@ -99,6 +101,7 @@ namespace LaneBattle.Core.Net
             w.Write(l.SlotPlayer.Length);
             foreach (var s in l.SlotPlayer) w.Write(s);
             w.Write(l.MapName ?? "");
+            w.Write(l.SharedTowers);
             return ms.ToArray();
         }
 
@@ -112,6 +115,7 @@ namespace LaneBattle.Core.Net
             l.SlotPlayer = new int[m];
             for (int i = 0; i < m; i++) l.SlotPlayer[i] = r.ReadInt32();
             l.MapName = r.ReadString();
+            if (r.BaseStream.Position < r.BaseStream.Length) l.SharedTowers = r.ReadBoolean();
             return l;
         }
 
@@ -122,6 +126,7 @@ namespace LaneBattle.Core.Net
             w.Write(s.SlotPlayer.Length);
             foreach (var v in s.SlotPlayer) w.Write(v);
             w.Write(s.MapName ?? "");
+            w.Write(s.SharedTowers);
             int n = s.SlotSecrets?.Length ?? 0;
             w.Write(n);
             for (int i = 0; i < n; i++)
@@ -141,6 +146,7 @@ namespace LaneBattle.Core.Net
             s.SlotPlayer = new int[n];
             for (int i = 0; i < n; i++) s.SlotPlayer[i] = r.ReadInt32();
             s.MapName = r.ReadString();
+            s.SharedTowers = r.ReadBoolean();
             int m = r.ReadInt32();
             s.SlotSecrets = new List<int>[m];
             for (int i = 0; i < m; i++)

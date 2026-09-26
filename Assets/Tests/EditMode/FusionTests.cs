@@ -230,5 +230,76 @@ namespace LaneBattle.Tests
             Run(sim, MatchCommand.Upgrade(0, 0, star3.Id));
             Assert.IsTrue(star3.Upgraded, "★3 은 강화된다");
         }
+
+        static List<(int x, int y)> FreeCells(LaneSim lane, int n)
+        {
+            var list = new List<(int, int)>();
+            for (int y = 0; y < lane.Map.H && list.Count < n; y++)
+                for (int x = 0; x < lane.Map.W && list.Count < n; x++)
+                    if (lane.CanBuildAt(x, y)) list.Add((x, y));
+            return list;
+        }
+
+        static MatchSim TeamMatch(bool shared) => new MatchSim(new MatchConfig { PlayersPerTeam = 2, FunLayer = false, SharedTowers = shared }, 5);
+
+        [Test]
+        public void SharedModeLetsTeammatesFuseEachOthersTowers()
+        {
+            var recipe = WaveCatalog.FusedTowers[0];
+            foreach (bool shared in new[] { true, false })
+            {
+                var sim = TeamMatch(shared);
+                var lane = sim.OwnLane(0);
+                var cells = FreeCells(lane, 2);
+                Run(sim, MatchCommand.Build(0, 0, recipe.RecipeA, cells[0].x, cells[0].y), MatchCommand.Build(0, 1, recipe.RecipeB, cells[1].x, cells[1].y));
+                var a = lane.TowerAtCell(cells[0].x, cells[0].y); var b = lane.TowerAtCell(cells[1].x, cells[1].y);
+                Assert.AreEqual(0, a.Owner); Assert.AreEqual(1, b.Owner);
+                Assert.AreEqual(shared ? 1 : 0, sim.FuseOptions(0, a).Count, "공유 모드에서만 팀원 타워가 짝으로 보인다");
+                Run(sim, MatchCommand.Fuse(0, 0, a.Id, b.Id));
+                if (shared)
+                {
+                    int alive = 0; Tower r = null;
+                    foreach (var t in lane.Towers) if (t.Alive) { alive++; r = t; }
+                    Assert.AreEqual(1, alive); Assert.AreEqual(recipe.Id, r.Def.Id);
+                    Assert.AreEqual(0, r.Owner, "결과는 기준 타워 주인의 것");
+                }
+                else Assert.IsTrue(sim.Events.Exists(e => e.Type == MatchEventType.Rejected && e.A == (int)CommandType.Fuse));
+            }
+        }
+
+        [Test]
+        public void SharedModeMergeAcrossOwnersAndSellRefundsBuilder()
+        {
+            var sim = TeamMatch(true);
+            var lane = sim.OwnLane(0);
+            var cells = FreeCells(lane, 3);
+            Run(sim, MatchCommand.Build(0, 0, 1, cells[0].x, cells[0].y), MatchCommand.Build(0, 0, 1, cells[1].x, cells[1].y), MatchCommand.Build(0, 1, 1, cells[2].x, cells[2].y));
+            var mine = lane.TowerAtCell(cells[2].x, cells[2].y);
+            Assert.IsNotNull(sim.MergeMates(0, mine));
+            Run(sim, MatchCommand.Merge(0, 1, mine.Id));
+            Tower star = null; foreach (var t in lane.Towers) if (t.Alive) star = t;
+            Assert.AreEqual(2, star.Star); Assert.AreEqual(1, star.Owner);
+            // 판매: 팀원이 팔아도 환불은 지은 사람에게
+            int g0 = sim.Player(0, 0).Gold, g1 = sim.Player(0, 1).Gold;
+            Run(sim, MatchCommand.Sell(0, 0, star.Id));
+            Assert.AreEqual(g0, sim.Player(0, 0).Gold);
+            Assert.AreEqual(g1 + MatchSim.SellValueOf(star), sim.Player(0, 1).Gold);
+        }
+
+        [Test]
+        public void IndividualModeRejectsSellingAndUpgradingTeammateTowers()
+        {
+            var sim = TeamMatch(false);
+            var lane = sim.OwnLane(0);
+            var cells = FreeCells(lane, 1);
+            Run(sim, MatchCommand.Build(0, 0, 1, cells[0].x, cells[0].y));
+            var t = lane.TowerAtCell(cells[0].x, cells[0].y);
+            t.Star = 3;
+            int g1 = sim.Player(0, 1).Gold;
+            Run(sim, MatchCommand.Sell(0, 1, t.Id), MatchCommand.Upgrade(0, 1, t.Id));
+            Assert.IsTrue(t.Alive); Assert.IsFalse(t.Upgraded); Assert.AreEqual(g1, sim.Player(0, 1).Gold);
+            Assert.AreEqual(2, sim.Events.FindAll(e => e.Type == MatchEventType.Rejected).Count);
+            Assert.IsFalse(sim.CanUse(t, 1)); Assert.IsTrue(sim.CanUse(t, 0));
+        }
     }
 }

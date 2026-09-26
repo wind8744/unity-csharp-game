@@ -12,7 +12,9 @@ namespace LaneBattle.Core.Wave
         public int BaseIncomePerPlayer = 10;
         public int IncomeIntervalSeconds = 15;
         public int DrawCost = 4;
-        public int HandMax = 8;
+        public int HandMax = 10;               // v0.17: 8 → 10 (조합 노리며 들고 있을 자리)
+        public int[] HandBonusLevels = { 3, 6, 9 };   // 이 레벨마다 손패 +1 (최대 13)
+        public bool SharedTowers = false;       // 팀전: 팀 타워를 누구나 합성·합치기·강화·판매 (공유 모드). 1v1 에선 의미 없음
         public int KillGold = 1;
         public int TowerDamagePercent = 160;   // 밸런스 전역 배율 (봇 대전 스윕으로 결정, 문서 v0.4 16절)
         public int SendCostPercent = 85;       // 보내기 비용 배율
@@ -76,7 +78,12 @@ namespace LaneBattle.Core.Wave
         public List<int> RecentHeroSendTicks = new List<int>();
         public bool Has(AugmentId a) => Augments.Contains(a);
         public int DrawCost(MatchConfig cfg) => Math.Max(1, (Has(AugmentId.Merchant) ? 3 : cfg.DrawCost) - (Has(AugmentId.Veteran) ? 1 : 0));
-        public int HandMax(MatchConfig cfg) => cfg.HandMax + (Has(AugmentId.Veteran) ? 1 : 0);
+        public int HandMax(MatchConfig cfg)
+        {
+            int n = cfg.HandMax + (Has(AugmentId.Veteran) ? 1 : 0);
+            foreach (var lv in cfg.HandBonusLevels) if (Level >= lv) n++;
+            return n;
+        }
     }
 
     public sealed class TeamEcon
@@ -500,11 +507,11 @@ namespace LaneBattle.Core.Wave
                 case CommandType.Upgrade:
                 {
                     var t = lane.TowerAt(c.A);
-                    if (t == null || t.Upgraded || t.Star < 3) { Reject(c); return; }   // 강화는 ★3 (더 못 올리는) 타워만
+                    if (t == null || !CanUse(t, c.Player) || t.Upgraded || t.Star < 3) { Reject(c); return; }   // 강화는 ★3 (더 못 올리는) 타워만
                     int upCost = UpgradeCostOf(c.Team, t);
                     if (p.Gold < upCost) { Reject(c); return; }
                     p.Gold -= upCost;
-                    if (p.Has(AugmentId.Elite)) t.UpgradePercent = 80;
+                    if (Players[c.Team][t.Owner].Has(AugmentId.Elite)) t.UpgradePercent = 80;
                     lane.Upgrade(t.Id);
                     Emit(MatchEventType.Upgraded, c.Team, c.Player, t.Id, upCost);
                     break;
@@ -512,12 +519,12 @@ namespace LaneBattle.Core.Wave
                 case CommandType.Merge:
                 {
                     var t = lane.TowerAt(c.A);
-                    if (t == null || t.Owner != c.Player) { Reject(c); return; }
+                    if (t == null || !CanUse(t, c.Player)) { Reject(c); return; }
                     (int, int)? mates;
                     if (c.B > 0 && c.C > 0)
                     {
                         var m1 = lane.TowerAt(c.B); var m2 = lane.TowerAt(c.C);
-                        bool ok = m1 != null && m2 != null && m1.Id != m2.Id && m1.Id != t.Id && m2.Id != t.Id && m1.Owner == c.Player && m2.Owner == c.Player
+                        bool ok = m1 != null && m2 != null && m1.Id != m2.Id && m1.Id != t.Id && m2.Id != t.Id && SameOwnerOrShared(m1, t) && SameOwnerOrShared(m2, t)
                                   && m1.Def.Id == t.Def.Id && m2.Def.Id == t.Def.Id && m1.Star == t.Star && m2.Star == t.Star;
                         mates = ok ? (c.B, c.C) : ((int, int)?)null;
                     }
@@ -525,10 +532,11 @@ namespace LaneBattle.Core.Wave
                     if (mates == null) { Reject(c); return; }
                     var r = lane.MergeStar(t.Id, mates.Value.Item1, mates.Value.Item2);
                     if (r == null) { Reject(c); return; }
-                    if (p.Has(AugmentId.Elite)) r.UpgradePercent = 80;
-                    if (p.Has(AugmentId.AirNet)) r.ForceAntiAir = true;
-                    if (p.Has(AugmentId.StarBlessing)) r.StarBlessed = true;
-                    if (p.Has(AugmentId.Alchemy) && r.Star >= 3) r.Upgraded = true;   // 연금술: ★3 이 되는 순간 공짜 강화
+                    var op = Players[c.Team][r.Owner];   // 결과 타워의 주인(기준 타워 주인) 증강이 붙는다
+                    if (op.Has(AugmentId.Elite)) r.UpgradePercent = 80;
+                    if (op.Has(AugmentId.AirNet)) r.ForceAntiAir = true;
+                    if (op.Has(AugmentId.StarBlessing)) r.StarBlessed = true;
+                    if (op.Has(AugmentId.Alchemy) && r.Star >= 3) r.Upgraded = true;   // 연금술: ★3 이 되는 순간 공짜 강화
                     if (r.Star > p.MaxStar) p.MaxStar = r.Star;
                     Emit(MatchEventType.Merged, c.Team, c.Player, r.Id, r.Star);
                     break;
@@ -536,13 +544,14 @@ namespace LaneBattle.Core.Wave
                 case CommandType.Fuse:
                 {
                     var a = lane.TowerAt(c.A); var b = lane.TowerAt(c.B);
-                    if (a == null || b == null || a.Owner != c.Player || b.Owner != c.Player || a.Star != b.Star || WaveCatalog.FindRecipe(a.Def.Id, b.Def.Id) == null) { Reject(c); return; }
+                    if (a == null || b == null || !CanUse(a, c.Player) || !SameOwnerOrShared(b, a) || a.Star != b.Star || WaveCatalog.FindRecipe(a.Def.Id, b.Def.Id) == null) { Reject(c); return; }
                     var r = lane.Fuse(a.Id, b.Id);
                     if (r == null) { Reject(c); return; }
-                    if (p.Has(AugmentId.Elite)) r.UpgradePercent = 80;
-                    if (p.Has(AugmentId.AirNet)) r.ForceAntiAir = true;
-                    if (p.Has(AugmentId.StarBlessing)) r.StarBlessed = true;
-                    if (p.Has(AugmentId.Alchemy) && r.Star >= 3) r.Upgraded = true;
+                    var op = Players[c.Team][r.Owner];
+                    if (op.Has(AugmentId.Elite)) r.UpgradePercent = 80;
+                    if (op.Has(AugmentId.AirNet)) r.ForceAntiAir = true;
+                    if (op.Has(AugmentId.StarBlessing)) r.StarBlessed = true;
+                    if (op.Has(AugmentId.Alchemy) && r.Star >= 3) r.Upgraded = true;
                     p.FusedKinds.Add(r.Def.Id);
                     Emit(MatchEventType.Fused, c.Team, c.Player, r.Id, r.Def.Id);
                     break;
@@ -550,10 +559,10 @@ namespace LaneBattle.Core.Wave
                 case CommandType.Sell:
                 {
                     var t = lane.TowerAt(c.A);
-                    if (t == null) { Reject(c); return; }
+                    if (t == null || !CanUse(t, c.Player)) { Reject(c); return; }
                     int refund = SellValueOf(t);
                     lane.Sell(t.Id);
-                    p.Gold += refund;
+                    Players[c.Team][t.Owner].Gold += refund;   // 공유 모드에서 남의 타워를 팔아도 환불은 지은 사람에게
                     Emit(MatchEventType.Sold, c.Team, c.Player, t.Id, refund);
                     break;
                 }
@@ -643,6 +652,11 @@ namespace LaneBattle.Core.Wave
             return cost;
         }
 
+        /// <summary>이 플레이어가 타워를 다룰 수 있나: 내 타워, 또는 공유 모드면 팀 타워 전부.</summary>
+        public bool CanUse(Tower t, int player) => t != null && (Cfg.SharedTowers || t.Owner == player);
+        /// <summary>재료로 같이 쓸 수 있나: 같은 주인, 또는 공유 모드.</summary>
+        public bool SameOwnerOrShared(Tower a, Tower b) => Cfg.SharedTowers || a.Owner == b.Owner;
+
         /// <summary>판매 환불: 비용 × 3^(별-1) × (강화 2) × 80%.</summary>
         public static int SellValueOf(Tower t)
         {
@@ -652,14 +666,14 @@ namespace LaneBattle.Core.Wave
             return value * 80 / 100;
         }
 
-        /// <summary>타워 t 와 합칠 수 있는 같은 주인·같은 정의·같은 별 타워 두 개 (id 낮은 순). 없으면 null.</summary>
+        /// <summary>타워 t 와 합칠 수 있는 같은 주인(공유 모드면 팀)·같은 정의·같은 별 타워 두 개 (id 낮은 순). 없으면 null.</summary>
         public (int, int)? MergeMates(int team, Tower t)
         {
             if (t == null || t.Star >= 3) return null;
             var lane = Lanes[team];
             var ids = new List<int>();
             foreach (var o in lane.Towers)
-                if (o.Alive && o.Id != t.Id && o.Owner == t.Owner && o.Def.Id == t.Def.Id && o.Star == t.Star) ids.Add(o.Id);
+                if (o.Alive && o.Id != t.Id && SameOwnerOrShared(o, t) && o.Def.Id == t.Def.Id && o.Star == t.Star) ids.Add(o.Id);
             if (ids.Count < 2) return null;
             ids.Sort();
             return (ids[0], ids[1]);
@@ -671,7 +685,7 @@ namespace LaneBattle.Core.Wave
             var ids = new List<int>();
             if (t == null || t.Star >= 3) return ids;
             foreach (var o in Lanes[team].Towers)
-                if (o.Alive && o.Id != t.Id && o.Owner == t.Owner && o.Def.Id == t.Def.Id && o.Star == t.Star) ids.Add(o.Id);
+                if (o.Alive && o.Id != t.Id && SameOwnerOrShared(o, t) && o.Def.Id == t.Def.Id && o.Star == t.Star) ids.Add(o.Id);
             ids.Sort();
             return ids;
         }
@@ -683,7 +697,7 @@ namespace LaneBattle.Core.Wave
             if (t == null) return ids;
             foreach (var o in Lanes[team].Towers)
             {
-                if (!o.Alive || o.Id == t.Id || o.Owner != t.Owner || o.Star != t.Star) continue;
+                if (!o.Alive || o.Id == t.Id || !SameOwnerOrShared(o, t) || o.Star != t.Star) continue;
                 var def = WaveCatalog.FindRecipe(t.Def.Id, o.Def.Id);
                 if (def != null && def.Id == resultDefId) ids.Add(o.Id);
             }
@@ -699,7 +713,7 @@ namespace LaneBattle.Core.Wave
             var lane = Lanes[team];
             foreach (var o in lane.Towers)
             {
-                if (!o.Alive || o.Id == t.Id || o.Owner != t.Owner || o.Star != t.Star) continue;   // 같은 별끼리만 합성
+                if (!o.Alive || o.Id == t.Id || !SameOwnerOrShared(o, t) || o.Star != t.Star) continue;   // 같은 별끼리만 합성 (공유 모드면 팀 타워 전부)
                 var def = WaveCatalog.FindRecipe(t.Def.Id, o.Def.Id);
                 if (def == null) continue;
                 bool dup = false;

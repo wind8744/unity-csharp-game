@@ -62,15 +62,17 @@ namespace LaneBattle.Game
         Transform _options;
         bool _argsDone;
 
-        /// <summary>해금한 것이 있을 때만 보이는 선택지: 맵, 봇 난이도.</summary>
+        /// <summary>선택지: 팀전 타워 공유 (항상), 해금한 맵·봇 난이도 (있을 때만).</summary>
         void BuildOptions(Profile profile)
         {
-            if (_options == null) _options = UiKit.Rect(_ui, "Options", 860, 370, 200, 200);
+            if (_options == null) _options = UiKit.Rect(_ui, "Options", 860, 370, 200, 260);
             UiKit.Clear(_options);
             var maps = profile.UnlockedMaps();
-            if (maps.Count == 0 && !profile.HardBotUnlocked) return;
-            UiKit.SpritePanel(_options, "Bg", 0, 0, 200, 60 + (maps.Count > 0 ? 34 * (maps.Count + 1) : 0) + (profile.HardBotUnlocked ? 40 : 0), "ui_panel");
-            float y = 10;
+            UiKit.SpritePanel(_options, "Bg", 0, 0, 200, 70 + (maps.Count > 0 ? 34 * (maps.Count + 1) : 0) + (profile.HardBotUnlocked ? 40 : 0), "ui_panel");
+            float y = 8;
+            UiKit.Label(_options, "ShareL", 10, y, 180, 20, "팀전(2v2·3v3) 타워", 12, TextAnchor.MiddleLeft, UiKit.Ink); y += 22;
+            UiKit.SpriteButton(_options, "Share", 10, y, 180, 30, GameSession.SharedTowers ? "공유: 팀 타워 누구나 합성" : "각자: 내 타워만 합성",
+                () => { GameSession.SharedTowers = !GameSession.SharedTowers; BuildOptions(profile); }, GameSession.SharedTowers ? "ui_button_blue" : "ui_button_grey", 11); y += 38;
             if (maps.Count > 0)
             {
                 UiKit.Label(_options, "MapL", 10, y, 180, 20, "맵 (혼자 하기 1v1)", 12, TextAnchor.MiddleLeft, UiKit.Ink); y += 22;
@@ -141,8 +143,8 @@ namespace LaneBattle.Game
                 "■ 방어  왼쪽 [내 진영]의 경로 옆 빈 칸에 타워를 짓는다. 타워는 지나가는 상대 유닛을 쏘기만 하고 맞지 않는다.\n" +
                 "   유닛은 구불구불한 경로를 따라 걷기만 하고, 살아서 끝까지 가면 기지 체력을 깎는다(누수). 굽이 안쪽 구석은 여러 구간을 동시에 본다.\n" +
                 "   기본 웨이브는 24초마다 양쪽에 똑같이 온다.\n\n" +
-                "■ 공격  [뽑기]로 유닛 카드를 뽑고(손패 8장, ×3 버튼으로 한 번에 셋), 카드를 눌러 상대 진영으로 보낸다. 보내면 팀 인컴이 오른다.\n" +
-                "   뽑기 등급 확률은 내 레벨이 정한다(롤토체스처럼). 경험치는 수입마다 +2, 4골드로 +4 (E). 레벨 4부터 전설(맹수 왕·리치·고대 드래곤·타이탄).\n" +
+                "■ 공격  [뽑기]로 유닛 카드를 뽑고(손패 10장, 레벨 3·6·9마다 +1), 카드를 눌러 상대 진영으로 보낸다. 보내면 팀 인컴이 오른다.\n" +
+                "   뽑기 등급 확률은 내 레벨이 정한다(롤토체스처럼). 경험치는 수입마다 +2, 4골드로 +4 (F). 레벨 4부터 전설(맹수 왕·리치·고대 드래곤·타이탄).\n" +
                 "   [돌격 강화]는 팀 공유: 레벨마다 우리 팀이 보내는 유닛 체력 +6%, 속도 +2% (25, 40, 55… 골드, 최대 6).\n" +
                 "   손패에 특정 카드 조합이 모이면 카드가 빛난다. R 이나 버튼으로 합치면 뽑기로는 못 얻는 히든 유닛 (합성표 → 손패 조합).\n" +
                 "   상대가 보낸 유닛은 내 라인에 보이니, 오는 것을 보고 타워를 짓고 남는 골드로 보내자.\n\n" +
@@ -151,7 +153,8 @@ namespace LaneBattle.Game
                 "   강화(공속 +50%, 타워 비용)는 더 올릴 게 없는 ★3 타워에만 할 수 있다.\n" +
                 "   시너지: 같은 계열(숲·불·기계) 3/5개, 같은 직업 타워를 옆에 붙이기. 5초 안에 같은 유닛 3마리를 보내면 무리 시너지.\n\n" +
                 "■ 재미 요소  레벨 1·3·6·9에 닿으면 증강 3장 중 1장(20초 안에, 게임은 계속). 3:30·6:00에 이벤트 시간대(30초 전 예고). 비밀 미션은 시작 때 하나.\n\n" +
-                "■ 온라인  한 명이 [방 만들기], 나머지는 그 주소로 [참가]. 호스트가 인원과 팀을 정하고 시작. 빈 자리는 봇.\n\n" +
+                "■ 팀전  손패(공격 유닛)는 각자. 타워는 [각자] 모드면 내 타워만 합성·판매, [공유] 모드면 팀 타워를 누구나 합성·판매(환불은 지은 사람에게). 타이틀 오른쪽·온라인 로비에서 고른다.\n" +
+                "■ 온라인  한 명이 [방 만들기], 나머지는 그 주소로 [참가]. 호스트가 인원·팀·타워 공유를 정하고 시작. 빈 자리는 봇.\n\n" +
                 "■ 조작 (롤토체스식)  D = 뽑기, F = 레벨업 경험치, 카드 위에서 W = 보내기, E = 판매(타워 위), R = 합성(타워 위·손패 조합 공통),\n" +
                 "   C = ★ 합치기(타워 위), U = 강화(타워 위). 전부 커서를 올린 대상에 바로 적용. 타워를 클릭하면 같은 버튼이 아래에 나옵니다.\n" +
                 "■ 건설 (스타크래프트식)  B = 목록 → 글자 키(Q W E R A S D F G) 또는 상점 클릭 → 커서에 뜬 타워를 빈 칸에 클릭\n" +
@@ -186,7 +189,7 @@ namespace LaneBattle.Game
 
         void ShowHandRecipes()
         {
-            OpenPopup("손패 조합 — 재료 카드가 손패에 모이면 저절로 히든 유닛이 됩니다");
+            OpenPopup("손패 조합 — 재료 카드가 손패에 모이면 카드가 빛나고, R 로 합치면 히든 유닛");
             MatchView.HandRecipeRows(_popup, 60, 900);
         }
 
