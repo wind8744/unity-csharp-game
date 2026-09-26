@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using LaneBattle.Core.Net;
 using UnityEngine;
 using UnityEngine.UI;
@@ -60,7 +61,8 @@ namespace LaneBattle.Game
             try
             {
                 var t = TcpTransport.Host(TcpTransport.DefaultPort);
-                Attach(new NetSession(t, true, _name.Value));
+                var hs = new NetSession(t, true, _name.Value);
+                Attach(hs);
                 Log($"방을 만들었습니다. 내 주소: {string.Join(" / ", TcpTransport.LocalAddresses())}:{TcpTransport.DefaultPort}");
             }
             catch (System.Exception e) { _status.text = "방 만들기 실패: " + e.Message; }
@@ -76,7 +78,9 @@ namespace LaneBattle.Game
             {
                 var t = TcpTransport.Connect(addr, port);
                 PlayerPrefs.SetString("lastAddr", _addr.Value.Trim());
-                Attach(new NetSession(t, false, _name.Value));
+                var cs = new NetSession(t, false, _name.Value);
+                Attach(cs);
+                cs.Poll(); // Hello 는 연결 이벤트에서 나간다 — 비밀 증강을 담은 뒤 보내도록 Attach 뒤에 폴링
                 Log($"{addr}:{port} 에 연결했습니다. 호스트가 시작하길 기다리는 중…");
             }
             catch (System.Exception e) { _status.text = "참가 실패: " + e.Message + " (주소·방화벽·호스트가 방을 만들었는지 확인)"; }
@@ -85,6 +89,7 @@ namespace LaneBattle.Game
         void Attach(NetSession s)
         {
             Session = s;
+            foreach (var a in ProfileStore.Current.AllowedSecretAugments()) s.MySecretAugments.Add((int)a);
             GameSession.PlayerName = _name.Value;
             s.LobbyChanged += () => _dirty = true;
             s.Log += Log;
@@ -127,10 +132,22 @@ namespace LaneBattle.Game
                     UiKit.SpriteButton(a, "Mode" + n, 60 + (n - 1) * 90, 28, 84, 32, $"{n} vs {n}", () => Session.SetPlayersPerTeam(nn), lobby.PlayersPerTeam == n ? "ui_button" : "ui_button_grey", 13);
                 }
                 UiKit.Label(a, "ModeHint", 340, 30, 600, 30, "사람 이름을 누르면 다음 빈 자리로 옮깁니다 (팀 바꾸기). 빈 자리는 봇.", 11, TextAnchor.MiddleLeft, UiKit.InkSoft);
+                var maps = ProfileStore.Current.UnlockedMaps();
+                if (maps.Count > 0)
+                {
+                    UiKit.Label(a, "MapL", 0, 392, 60, 30, "맵", 13, TextAnchor.MiddleLeft, UiKit.Ink);
+                    float mx = 40;
+                    foreach (var name in new[] { "" }.Concat(maps))
+                    {
+                        string n = name; bool sel = (lobby.MapName ?? "") == n;
+                        UiKit.SpriteButton(a, "Map" + n, mx, 390, 120, 30, n == "" ? "기본" : n, () => Session.SetMap(n), sel ? "ui_button_green" : "ui_button_grey", 12);
+                        mx += 126;
+                    }
+                }
             }
             else
             {
-                UiKit.Label(a, "Wait", 0, 0, 940, 22, $"{lobby.PlayersPerTeam} vs {lobby.PlayersPerTeam} — 호스트가 시작하길 기다리는 중… (핑 {Mathf.Max(0, Session.PingMs)}ms)", 14, TextAnchor.MiddleLeft, UiKit.Ink);
+                UiKit.Label(a, "Wait", 0, 0, 940, 22, $"{lobby.PlayersPerTeam} vs {lobby.PlayersPerTeam} · 맵 {(string.IsNullOrEmpty(lobby.MapName) ? "기본" : lobby.MapName)} — 호스트가 시작하길 기다리는 중… (핑 {Mathf.Max(0, Session.PingMs)}ms)", 14, TextAnchor.MiddleLeft, UiKit.Ink);
             }
             for (int team = 0; team < 2; team++)
             {
@@ -158,8 +175,8 @@ namespace LaneBattle.Game
 
         void ShowLog(Transform a, float y)
         {
-            UiKit.SpritePanel(a, "LogBox", 0, y, 940, 420 - y, "ui_slot");
-            UiKit.Label(a, "Log", 10, y + 6, 920, 420 - y - 12, string.Join("\n", _log), 12, TextAnchor.LowerLeft, UiKit.Ink);
+            UiKit.SpritePanel(a, "LogBox", 0, y, 940, 384 - y, "ui_slot");
+            UiKit.Label(a, "Log", 10, y + 6, 920, 384 - y - 12, string.Join("\n", _log), 12, TextAnchor.LowerLeft, UiKit.Ink);
         }
 
         void SendChat()
