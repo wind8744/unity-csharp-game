@@ -100,14 +100,19 @@ namespace LaneBattle.Tests
         [Test]
         public void EveryFusedTowerHasTwoDistinctBasicIngredients()
         {
-            foreach (var t in WaveCatalog.FusedTowers)
+            foreach (var t in WaveCatalog.RecipeTowers)
             {
                 Assert.AreNotEqual(t.RecipeA, t.RecipeB, t.Name);
-                Assert.AreEqual(1, WaveCatalog.Tower(t.RecipeA).Tier, t.Name);
-                Assert.AreEqual(1, WaveCatalog.Tower(t.RecipeB).Tier, t.Name);
+                Assert.AreEqual(t.Tier - 1, WaveCatalog.Tower(t.RecipeA).Tier, t.Name + " 재료는 한 단계 아래");
+                Assert.AreEqual(t.Tier - 1, WaveCatalog.Tower(t.RecipeB).Tier, t.Name);
                 Assert.AreEqual(WaveCatalog.Tower(t.RecipeA).Cost + WaveCatalog.Tower(t.RecipeB).Cost, t.Cost, t.Name + " 비용은 재료 합");
             }
             Assert.AreEqual(9, WaveCatalog.BasicTowers.Length);
+            Assert.AreEqual(8, WaveCatalog.FusedTowers.Length);
+            Assert.AreEqual(4, WaveCatalog.Tier3Towers.Length);
+            // 3단계 재료로 쓰이는 2단계 타워는 서로 다르다 (한 타워가 두 레시피에 겹치지 않음)
+            var used = new System.Collections.Generic.HashSet<int>();
+            foreach (var t in WaveCatalog.Tier3Towers) { Assert.IsTrue(used.Add(t.RecipeA), t.Name); Assert.IsTrue(used.Add(t.RecipeB), t.Name); }
         }
 
         [Test]
@@ -167,6 +172,27 @@ namespace LaneBattle.Tests
             Assert.IsNotNull(lane2.TowerAtCell(3, 0), "고르지 않은 창탑은 남는다");
             Assert.IsNull(lane2.TowerAtCell(5, 0));
             Assert.AreEqual(10, lane2.TowerAtCell(0, 0).Def.Id);
+        }
+
+        [Test]
+        public void TwoFusedTowersFuseIntoTier3()
+        {
+            var sim = NewMatch();
+            // 불화살 사수(궁수+창탑) 와 저격 드론(궁수+드론) → 유성 저격수
+            Run(sim, MatchCommand.Build(0, 0, 1, 0, 0), MatchCommand.Build(0, 0, 4, 1, 0), MatchCommand.Build(0, 0, 1, 3, 0), MatchCommand.Build(0, 0, 9, 4, 0));
+            var lane = sim.OwnLane(0);
+            Run(sim, MatchCommand.Fuse(0, 0, lane.TowerAtCell(0, 0).Id, lane.TowerAtCell(1, 0).Id));
+            Run(sim, MatchCommand.Fuse(0, 0, lane.TowerAtCell(3, 0).Id, lane.TowerAtCell(4, 0).Id));
+            var a = lane.TowerAtCell(0, 0); var b = lane.TowerAtCell(3, 0);
+            Assert.AreEqual(10, a.Def.Id); Assert.AreEqual(15, b.Def.Id);
+            var opts = sim.FuseOptions(0, a);
+            Assert.AreEqual(1, opts.Count); Assert.AreEqual(18, opts[0].result.Id);
+            Run(sim, MatchCommand.Fuse(0, 0, a.Id, b.Id));
+            var t3 = lane.TowerAtCell(0, 0);
+            Assert.AreEqual(3, t3.Def.Tier); Assert.AreEqual("유성 저격수", t3.Def.Name);
+            Assert.IsNull(lane.TowerAtCell(3, 0));
+            Assert.AreEqual(27 * 80 / 100, MatchSim.SellValueOf(t3));
+            Assert.AreEqual(0, sim.FuseOptions(0, t3).Count, "3단계는 더 못 합친다 (별 올리기는 가능)");
         }
     }
 }

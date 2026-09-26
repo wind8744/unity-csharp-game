@@ -14,8 +14,9 @@ namespace LaneBattle.Core.Wave
         public int DrawCost = 4;
         public int HandMax = 8;
         public int KillGold = 1;
-        public int TowerDamagePercent = 200;   // 밸런스 전역 배율 (봇 대전 스윕으로 결정, 문서 v0.4 13절)
+        public int TowerDamagePercent = 160;   // 밸런스 전역 배율 (봇 대전 스윕으로 결정, 문서 v0.4 16절)
         public int SendCostPercent = 85;       // 보내기 비용 배율
+        public int Tier2DamagePercent = 85, Tier3DamagePercent = 75;     // 합성 타워 공격 배율 (문서 v0.4 16절)
         public int SendIncomePercent = 50;     // 보낼 때 오르는 인컴 배율 (정수 나눗셈, 최소 1)
         public int BaseHpOverride = 0;          // 0 이면 인원수 기본값
         public int WaveScaleOverride = 0;       // 0 이면 인원수 기본값
@@ -45,7 +46,7 @@ namespace LaneBattle.Core.Wave
         {
             Map = Map, BaseHp = BaseHp, WaveScalePercent = WaveScalePercent,
             TicksPerSecond = TicksPerSecond, MatchSeconds = MatchSeconds, TowerDamagePercent = TowerDamagePercent,
-            LateWaveStepPercent = LateWaveStepPercent, CreepSpeedPercent = CreepSpeedPercent,
+            LateWaveStepPercent = LateWaveStepPercent, CreepSpeedPercent = CreepSpeedPercent, Tier2DamagePercent = Tier2DamagePercent, Tier3DamagePercent = Tier3DamagePercent,
             FirstWaveSeconds = FirstWaveSeconds, WaveIntervalSeconds = WaveIntervalSeconds, BuildSeconds = BuildSeconds,
         };
     }

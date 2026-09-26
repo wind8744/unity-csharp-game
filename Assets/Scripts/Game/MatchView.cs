@@ -507,7 +507,7 @@ namespace LaneBattle.Game
 
             _augmentPanel = UiKit.SpritePanel(ui, "AugmentPanel", 230, 300, 820, 196, "ui_panel_dark").transform;
             _augmentPanel.gameObject.SetActive(false);
-            _recipePanel = UiKit.SpritePanel(ui, "RecipePanel", 240, 70, 800, 430, "ui_panel").transform;
+            _recipePanel = UiKit.SpritePanel(ui, "RecipePanel", 240, 60, 800, 566, "ui_panel").transform;
             _recipePanel.gameObject.SetActive(false);
             _menuPanel = UiKit.SpritePanel(ui, "MenuPanel", 440, 200, 400, 300, "ui_panel_dark").transform;
             _menuPanel.gameObject.SetActive(false);
@@ -596,7 +596,7 @@ namespace LaneBattle.Game
             var opts = Sim.FuseOptions(MyTeam, t);
             float fy = 56;
             if (opts.Count == 0)
-                UiKit.Label(_actionPanel, "NoFuse", 0, fy, 450, 26, t.Def.IsFused ? "합성 타워는 더 합성할 수 없습니다 (같은 것 3개로 ★ 올리기는 가능)" : "합성 상대 없음 — 합성표에서 짝이 되는 타워를 지으세요", 10, TextAnchor.MiddleLeft, UiKit.InkSoft);
+                UiKit.Label(_actionPanel, "NoFuse", 0, fy, 450, 26, t.Def.Tier >= 3 ? "3단계 타워는 더 합성할 수 없습니다 (같은 것 3개로 ★ 올리기는 가능)" : "합성 상대 없음 — 합성표에서 짝이 되는 타워를 지으세요", 10, TextAnchor.MiddleLeft, UiKit.InkSoft);
             for (int i = 0; i < opts.Count && i < 3; i++)
             {
                 var (partner, result) = opts[i];
@@ -645,26 +645,27 @@ namespace LaneBattle.Game
         void BuildRecipePanel()
         {
             var r = _recipePanel;
-            UiKit.Label(r, "Title", 0, 14, 800, 30, "합성표 — 재료 두 타워를 내 라인에 지은 뒤, 한쪽을 클릭해 [합성]", 16, TextAnchor.MiddleCenter, UiKit.Ink);
-            UiKit.Label(r, "Sub", 0, 42, 800, 20, "같은 타워 3개 → ★2 (공격 ×2.2, 사거리 +0.5) · ★2 3개 → ★3 (공격 ×5, 사거리 +1). 합성 타워도 ★을 올릴 수 있습니다.", 11, TextAnchor.MiddleCenter, UiKit.InkSoft);
+            UiKit.Label(r, "Title", 0, 10, 800, 26, "합성표 — 재료 두 타워를 내 진영에 지은 뒤, 한쪽을 클릭해 [합성]", 15, TextAnchor.MiddleCenter, UiKit.Ink);
+            UiKit.Label(r, "Sub", 0, 34, 800, 18, "같은 타워 3개 → ★2 (공격 ×2.2) · ★2 3개 → ★3 (×5). 2단계 둘을 다시 합치면 3단계. 어느 단계든 ★을 올릴 수 있습니다.", 10, TextAnchor.MiddleCenter, UiKit.InkSoft);
             int i = 0;
-            foreach (var f in WaveCatalog.FusedTowers)
+            foreach (var f in WaveCatalog.RecipeTowers)
             {
-                float x = 24 + (i % 2) * 385, y = 70 + (i / 2) * 84;
+                float x = 20 + (i % 2) * 390, y = 56 + (i / 2) * 78;
                 var a = WaveCatalog.Tower(f.RecipeA); var b = WaveCatalog.Tower(f.RecipeB);
-                UiKit.SpritePanel(r, "Row" + i, x, y, 370, 76, "ui_slot");
-                UiKit.IconSprite(r, "A" + i, x + 8, y + 6, 40, 40, Art.Tower(a.Id, 0));
-                UiKit.Label(r, "An" + i, x, y + 48, 56, 16, a.Name, 9, TextAnchor.MiddleCenter, UiKit.InkSoft);
-                UiKit.Label(r, "Plus" + i, x + 52, y + 12, 20, 30, "+", 20, TextAnchor.MiddleCenter, UiKit.Ink);
-                UiKit.IconSprite(r, "B" + i, x + 74, y + 6, 40, 40, Art.Tower(b.Id, 0));
-                UiKit.Label(r, "Bn" + i, x + 66, y + 48, 56, 16, b.Name, 9, TextAnchor.MiddleCenter, UiKit.InkSoft);
-                UiKit.Label(r, "Arrow" + i, x + 120, y + 12, 24, 30, "→", 20, TextAnchor.MiddleCenter, UiKit.Ink);
-                UiKit.IconSprite(r, "R" + i, x + 148, y + 4, 44, 44, Art.Tower(f.Id, 0));
-                UiKit.Label(r, "Rn" + i, x + 198, y + 6, 170, 20, f.Name, 13, TextAnchor.MiddleLeft, UiKit.Ink);
-                UiKit.Label(r, "Rd" + i, x + 198, y + 26, 170, 48, TowerInfo.Describe(f), 9, TextAnchor.UpperLeft, UiKit.InkSoft);
+                UiKit.SpritePanel(r, "Row" + i, x, y, 380, 72, f.Tier >= 3 ? "ui_panel_dark" : "ui_slot");
+                var ink = f.Tier >= 3 ? Color.white : UiKit.Ink; var soft = f.Tier >= 3 ? new Color(0.85f, 0.85f, 0.9f) : UiKit.InkSoft;
+                UiKit.IconSprite(r, "A" + i, x + 8, y + 4, 38, 38, Art.Tower(a.Id, 0));
+                UiKit.Label(r, "An" + i, x - 2, y + 44, 58, 24, a.Name, 8, TextAnchor.UpperCenter, soft);
+                UiKit.Label(r, "Plus" + i, x + 50, y + 10, 20, 28, "+", 18, TextAnchor.MiddleCenter, ink);
+                UiKit.IconSprite(r, "B" + i, x + 72, y + 4, 38, 38, Art.Tower(b.Id, 0));
+                UiKit.Label(r, "Bn" + i, x + 62, y + 44, 58, 24, b.Name, 8, TextAnchor.UpperCenter, soft);
+                UiKit.Label(r, "Arrow" + i, x + 116, y + 10, 24, 28, "→", 18, TextAnchor.MiddleCenter, ink);
+                UiKit.IconSprite(r, "R" + i, x + 144, y + 2, 44, 44, Art.Tower(f.Id, 0));
+                UiKit.Label(r, "Rn" + i, x + 194, y + 4, 180, 18, (f.Tier >= 3 ? "★3단계  " : "") + f.Name, 12, TextAnchor.MiddleLeft, f.Tier >= 3 ? UiKit.Gold : ink);
+                UiKit.Label(r, "Rd" + i, x + 194, y + 22, 182, 50, TowerInfo.Describe(f), 8, TextAnchor.UpperLeft, soft);
                 i++;
             }
-            UiKit.SpriteButton(r, "Close", 340, 396, 120, 30, "닫기 (ESC)", ToggleRecipes, "ui_button_grey", 12);
+            UiKit.SpriteButton(r, "Close", 340, 528, 120, 28, "닫기 (ESC)", ToggleRecipes, "ui_button_grey", 12);
         }
 
         void ToggleRecipes()

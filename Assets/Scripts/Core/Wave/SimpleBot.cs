@@ -60,18 +60,16 @@ namespace LaneBattle.Core.Wave
                 foreach (var t in lane.Towers)
                     if (t.Alive && !t.Upgraded && p.Gold >= t.Def.Cost + reserve) { output.Add(MatchCommand.Upgrade(team, player, t.Id)); return; }
 
-            // 2b. 자리가 2칸 이하로 남으면 같은 타워 3개 합치기 → 레시피 합성 (둘 다 공짜, 슬롯이 는다)
-            if (slots.Count <= 2)
+            // 2b. 합성은 공짜고 자리를 아끼니 짝이 생기면 바로 (2단계 둘 → 3단계 포함). 별 합치기는 타워가 8개 넘을 때.
+            foreach (var t in lane.Towers)
             {
+                if (!t.Alive || t.Owner != player || t.BuildLeft > 0) continue;
+                var opts = sim.FuseOptions(team, t);
+                if (opts.Count > 0) { output.Add(MatchCommand.Fuse(team, player, t.Id, opts[0].partnerId)); return; }
+            }
+            if (towers >= 8 || slots.Count <= 2)
                 foreach (var t in lane.Towers)
                     if (t.Alive && t.Owner == player && sim.MergeMates(team, t) != null) { output.Add(MatchCommand.Merge(team, player, t.Id)); return; }
-                foreach (var t in lane.Towers)
-                {
-                    if (!t.Alive || t.Owner != player || t.Def.IsFused) continue;
-                    var opts = sim.FuseOptions(team, t);
-                    if (opts.Count > 0) { output.Add(MatchCommand.Fuse(team, player, t.Id, opts[0].partnerId)); return; }
-                }
-            }
 
             // 2b'. 경험치: 여유 골드가 있으면 30초마다 한 번 산다 (레벨이 시간에 뒤처지면 더 자주)
             if (p.Level < WaveCatalog.MaxLevel && p.Gold >= WaveCatalog.XpBuyCost + reserve + 10 && (seconds % 30 == 0 || p.Level < 2 + seconds / 60))
@@ -120,11 +118,12 @@ namespace LaneBattle.Core.Wave
             return best;
         }
 
+        /// <summary>기본 9종을 돌아가며 짓는다 (레시피 짝이 자연스럽게 생기도록). 처음 둘은 궁수.</summary>
+        static readonly int[] BuildCycle = { 1, 1, 4, 7, 5, 9, 2, 3, 8, 6, 1, 4, 5, 7, 9, 2 };
         static int PickGeneral(int towers, int gold)
         {
-            if (towers % 4 == 3 && gold >= 8) return 7;   // 포탑
-            if (towers % 4 == 2 && gold >= 7) return 4;   // 창탑
-            if (towers % 4 == 1 && gold >= 9 && towers > 3) return 5; // 술사
+            int id = BuildCycle[towers % BuildCycle.Length];
+            if (gold >= WaveCatalog.Tower(id).Cost) return id;
             return 1;                                      // 궁수
         }
 

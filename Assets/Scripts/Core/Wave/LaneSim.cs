@@ -20,6 +20,7 @@ namespace LaneBattle.Core.Wave
         public bool AutoWaves = true;
         public int CreepSpeedPercent = 50;  // 밸런스 전역 배율 (v0.5: 50%)
         public int TowerDamagePercent = 100;
+        public int Tier2DamagePercent = 100, Tier3DamagePercent = 100;   // 합성 타워 공격 배율 (합성이 너무 세지 않게)
         public int PathLengthMilli => Map.LengthMilli;
     }
 
@@ -411,6 +412,7 @@ namespace LaneBattle.Core.Wave
         int EffectiveDamage(Tower t, Creep target)
         {
             int dmg = t.Def.Atk * Cfg.TowerDamagePercent / 100;
+            if (t.Def.Tier == 2) dmg = dmg * Cfg.Tier2DamagePercent / 100; else if (t.Def.Tier >= 3) dmg = dmg * Cfg.Tier3DamagePercent / 100;
             dmg = dmg * WaveCatalog.StarPercent(t.Star) / 100;
             if (t.StarBlessed && t.Star >= 2) dmg = dmg * 110 / 100;
             if (t.Upgraded) dmg = dmg * (100 + t.UpgradePercent) / 100;
