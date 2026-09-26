@@ -7,21 +7,25 @@ namespace LaneBattle.Game
     {
         TitleScreen _title;
         MatchView _match;
+        OnlineLobby _lobby;
 
         void Awake()
         {
             Application.targetFrameRate = 60;
             var args = System.Environment.GetCommandLineArgs();
-            int mode = 0; bool titleShot = false; string shot = null;
+            int mode = 0; bool titleShot = false, online = false, autoHost = false; string shot = null;
             for (int i = 0; i < args.Length; i++)
             {
                 if (args[i] == "-mode" && i + 1 < args.Length && int.TryParse(args[i + 1], out int m)) mode = m;
                 if (args[i] == "-title") titleShot = true;
+                if (args[i] == "-online") online = true;
+                if (args[i] == "-host") autoHost = true;
                 if (args[i] == "-screenshot" && i + 1 < args.Length) shot = args[i + 1];
             }
             if (mode > 0) StartMatch(mode);
+            else if (online) { ShowOnline(); if (autoHost) _lobby.SendMessage("Host"); }
             else ShowTitle();
-            if (titleShot && shot != null) StartCoroutine(ScreenshotAndQuit(shot));
+            if ((titleShot || online) && shot != null) StartCoroutine(ScreenshotAndQuit(shot));
         }
 
         System.Collections.IEnumerator ScreenshotAndQuit(string path)
@@ -34,13 +38,38 @@ namespace LaneBattle.Game
 
         public void ShowTitle()
         {
-            if (_match != null) { Destroy(_match.gameObject); _match = null; }
+            if (_match != null) { _match.Net?.Dispose(); Destroy(_match.gameObject); _match = null; }
+            if (_lobby != null) { Destroy(_lobby.gameObject); _lobby = null; }
             var cam = Camera.main;
             if (cam != null) { cam.backgroundColor = new Color(0.55f, 0.78f, 0.95f); }
             var go = new GameObject("Title");
             go.transform.SetParent(transform, false);
             _title = go.AddComponent<TitleScreen>();
             _title.OnStart = StartMatch;
+            _title.OnOnline = ShowOnline;
+        }
+
+        public void ShowOnline()
+        {
+            if (_title != null) { Destroy(_title.gameObject); _title = null; }
+            var go = new GameObject("OnlineLobby");
+            go.transform.SetParent(transform, false);
+            _lobby = go.AddComponent<OnlineLobby>();
+            _lobby.OnStartMatch = StartOnlineMatch;
+            _lobby.OnBack = ShowTitle;
+        }
+
+        public void StartOnlineMatch(LaneBattle.Core.Net.NetSession session)
+        {
+            if (_lobby != null) { _lobby.HandedOver = true; Destroy(_lobby.gameObject); _lobby = null; }
+            if (_title != null) { Destroy(_title.gameObject); _title = null; }
+            var go = new GameObject("Match");
+            go.transform.SetParent(transform, false);
+            go.SetActive(false);
+            _match = go.AddComponent<MatchView>();
+            _match.Net = session;
+            _match.OnExit = ShowTitle;
+            go.SetActive(true);
         }
 
         public void StartMatch(int playersPerTeam)

@@ -7,8 +7,8 @@ namespace LaneBattle.Core.Wave
     public sealed class LaneConfig
     {
         public int Width = 4;               // 열 수
-        public int Length = 20;             // 칸
-        public int GridStartX = 5;          // 앞줄 x
+        public int Length = 30;             // 칸 (v0.5: 20 → 30, 오는 걸 보고 대응할 시간)
+        public int GridStartX = 10;         // 앞줄 x (타워 격자는 라인 중간)
         public int Rows = 3;
         public int TicksPerSecond = 20;
         public int MatchSeconds = 600;
@@ -21,7 +21,7 @@ namespace LaneBattle.Core.Wave
         public int BaseHp = 30;
         public int SpawnGapTicks = 6;       // 같은 무리 안 출발 간격
         public bool AutoWaves = true;
-        public int CreepSpeedPercent = 60;  // 밸런스 전역 배율 (v0.3: 막힘이 없어 60% 로 맞춤)
+        public int CreepSpeedPercent = 50;  // 밸런스 전역 배율 (v0.5: 60 → 50)
         public int TowerDamagePercent = 100;
     }
 
