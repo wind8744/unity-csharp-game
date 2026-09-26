@@ -375,7 +375,7 @@ namespace LaneBattle.Game
             if (_creeps.ContainsKey(c.Id) || !c.Alive) return;
             var root = new GameObject(c.Def.Name).transform;
             root.SetParent(_root, false);
-            bool big = c.Def.Rarity == Rarity.Hero;
+            bool big = c.Def.Rarity >= Rarity.Hero;
             float size = big ? 1.0f : 0.75f;
             var v = new CreepVisual { Creep = c, Root = root, Jitter = ((c.Id % 3) - 1) * 0.14f, Size = size, WalkClock = (c.Id % 7) * 0.05f };
             v.Frames = new[] { Art.Creep(c.Def.Id, 0), Art.Creep(c.Def.Id, 1) };
@@ -408,7 +408,7 @@ namespace LaneBattle.Game
             int frame = Mathf.FloorToInt(v.WalkClock / (c.Def.Flying ? 0.12f : 0.18f)) % 2;
             v.Body.sprite = v.Frames[frame];
             float squash = v.Flash > 0 ? 0.85f : 1f;
-            float baseScale = c.Boss && c.Def.Rarity != Rarity.Hero ? 1.25f : 1f;
+            float baseScale = c.Boss && c.Def.Rarity < Rarity.Hero ? 1.25f : c.Def.Rarity == Rarity.Legend ? 1.15f : 1f;
             v.Body.transform.localScale = new Vector3(baseScale * (2f - squash), baseScale * squash, 1);
             v.Body.transform.localPosition = new Vector3(0, bob + (frame == 1 && !c.Def.Flying ? 0.03f : 0f), 0);
             float ratio = c.MaxHp > 0 ? Mathf.Clamp01(c.Hp / (float)c.MaxHp) : 0;

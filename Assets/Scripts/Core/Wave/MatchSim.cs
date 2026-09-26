@@ -14,7 +14,7 @@ namespace LaneBattle.Core.Wave
         public int DrawCost = 4;
         public int HandMax = 8;
         public int KillGold = 1;
-        public int TowerDamagePercent = 150;   // 밸런스 전역 배율 (봇 대전 스윕으로 결정, 문서 v0.4 12절)
+        public int TowerDamagePercent = 200;   // 밸런스 전역 배율 (봇 대전 스윕으로 결정, 문서 v0.4 13절)
         public int SendCostPercent = 85;       // 보내기 비용 배율
         public int SendIncomePercent = 50;     // 보낼 때 오르는 인컴 배율 (정수 나눗셈, 최소 1)
         public int BaseHpOverride = 0;          // 0 이면 인원수 기본값
@@ -31,12 +31,14 @@ namespace LaneBattle.Core.Wave
         public int EventDurationSeconds = 45;
         public int EventWarnSeconds = 30;
         public bool FunLayer = true;                  // 증강·이벤트·미션·시너지 켜기
+        public int LegendUnlockSeconds = WaveCatalog.LegendUnlockSeconds; // 전설 등급이 뽑기에 나오는 시각
+        public bool SendUpgradesEnabled = true;       // 돌격 강화 허용
         public HashSet<AugmentId> AllowedSecretAugments; // 해금한 비밀 증강 (null 이면 없음), 모든 자리에 적용
         public HashSet<AugmentId>[] SecretAugmentsPerSlot; // 온라인: 슬롯(팀×인원+자리)별 각자 해금한 것. 있으면 위 값보다 우선
 
         // 인원수별 기본값 (봇 스윕으로 결정, 문서 v0.4 3·8절): 기지 40/120/360, 웨이브 100/130/130%
         public MapDef Map => MapOverride ?? MapCatalog.ForPlayers(PlayersPerTeam);
-        public int BaseHp => BaseHpOverride > 0 ? BaseHpOverride : PlayersPerTeam switch { 1 => 40, 2 => 100, _ => 180 };
+        public int BaseHp => BaseHpOverride > 0 ? BaseHpOverride : PlayersPerTeam switch { 1 => 50, 2 => 140, _ => 250 };
         public int WaveScalePercent => WaveScaleOverride > 0 ? WaveScaleOverride : PlayersPerTeam switch { 1 => 100, _ => 130 };
 
         public LaneConfig MakeLaneConfig() => new LaneConfig
@@ -74,6 +76,7 @@ namespace LaneBattle.Core.Wave
     {
         public int Index;
         public int Income;
+        public int SendLevel;                          // 돌격 강화 (팀 공유): 보내는 유닛 체력 +SendLevelHpPercent·속도 +2% /레벨
         public int KillGoldCursor;
         public int TotalKills;
         public int LastLeakTick;
@@ -81,7 +84,7 @@ namespace LaneBattle.Core.Wave
         public List<(int tick, int defId, int creepId)> RecentSends = new List<(int, int, int)>();
     }
 
-    public enum CommandType { Build, Upgrade, Sell, Draw, Send, Transfer, PickAugment, Merge, Fuse }
+    public enum CommandType { Build, Upgrade, Sell, Draw, Send, Transfer, PickAugment, Merge, Fuse, UpgradeSends }
 
     /// <summary>플레이어 명령. 락스텝에서 틱 번호와 함께 교환되는 유일한 입력.</summary>
     public struct MatchCommand
@@ -97,6 +100,8 @@ namespace LaneBattle.Core.Wave
         public static MatchCommand Send(int team, int player, int handIndex) => new MatchCommand { Team = team, Player = player, Type = CommandType.Send, A = handIndex };
         public static MatchCommand Transfer(int team, int player, int toPlayer, int amount) => new MatchCommand { Team = team, Player = player, Type = CommandType.Transfer, A = toPlayer, B = amount };
         public static MatchCommand PickAugment(int team, int player, int offerIndex) => new MatchCommand { Team = team, Player = player, Type = CommandType.PickAugment, A = offerIndex };
+        /// <summary>돌격 강화: 팀의 보내기 레벨을 1 올린다 (비용은 UpgradeSendsCost).</summary>
+        public static MatchCommand UpgradeSends(int team, int player) => new MatchCommand { Team = team, Player = player, Type = CommandType.UpgradeSends };
         /// <summary>별 합치기: 타워 A 와 같은 정의·별인 내 타워 두 개(자동: id 낮은 순)를 골라 A 자리에 ★+1.</summary>
         public static MatchCommand Merge(int team, int player, int towerId) => new MatchCommand { Team = team, Player = player, Type = CommandType.Merge, A = towerId };
         /// <summary>별 합치기: 소모할 두 타워를 직접 고른다.</summary>
@@ -105,7 +110,7 @@ namespace LaneBattle.Core.Wave
         public static MatchCommand Fuse(int team, int player, int towerA, int towerB) => new MatchCommand { Team = team, Player = player, Type = CommandType.Fuse, A = towerA, B = towerB };
     }
 
-    public enum MatchEventType { Income, Drew, Sent, Built, Upgraded, Sold, KillGold, Rejected, MatchEnd, AugmentOffer, AugmentPicked, PauseEnd, EventWarn, EventStart, EventEnd, MissionDone, GroupSynergy, Merged, Fused }
+    public enum MatchEventType { Income, Drew, Sent, Built, Upgraded, Sold, KillGold, Rejected, MatchEnd, AugmentOffer, AugmentPicked, PauseEnd, EventWarn, EventStart, EventEnd, MissionDone, GroupSynergy, Merged, Fused, SendsUpgraded }
 
     public struct MatchEvent
     {
@@ -485,7 +490,7 @@ namespace LaneBattle.Core.Wave
                 {
                     if (p.Gold < p.DrawCost(Cfg) || p.Hand.Count >= p.HandMax(Cfg)) { Reject(c); return; }
                     p.Gold -= p.DrawCost(Cfg);
-                    var def = RollAttacker(p.DrawRng);
+                    var def = RollAttacker(p.DrawRng, GameSeconds, Cfg.LegendUnlockSeconds);
                     p.Hand.Add(def.Id);
                     p.Drawn++;
                     Emit(MatchEventType.Drew, c.Team, c.Player, def.Id, p.Hand.Count - 1);
@@ -506,10 +511,12 @@ namespace LaneBattle.Core.Wave
                     p.LastSendTick = Tick;
                     int gtick2 = GameTick;
                     p.RecentSendTicks.Add(gtick2);
-                    if (def.Rarity == Rarity.Hero) p.RecentHeroSendTicks.Add(gtick2);
+                    if (def.Rarity >= Rarity.Hero) p.RecentHeroSendTicks.Add(gtick2);
                     var team = Teams[c.Team];
                     bool firstOfGroup = team.RecentSends.Count == 0 || gtick2 - team.RecentSends[team.RecentSends.Count - 1].tick > 5 * Cfg.TicksPerSecond;
                     var creep = EnemyLane(c.Team).Send(def, true, c.Team * 100 + c.Player + 1);
+                    int lv = Teams[c.Team].SendLevel;
+                    if (lv > 0) { creep.MaxHp = creep.MaxHp * (100 + SendLevelHpPercent * lv) / 100; creep.Hp = creep.MaxHp; creep.SpeedPerTick = Math.Max(1, creep.SpeedPerTick * (100 + SendLevelSpeedPercent * lv) / 100); }
                     if (p.Has(AugmentId.Venom)) { creep.MaxHp = creep.MaxHp * 125 / 100; creep.Hp = creep.MaxHp; }
                     if (p.Has(AugmentId.Curse)) creep.SpawnCurse = true;
                     if (p.Has(AugmentId.Corrosion)) creep.NoKillGold = true;
@@ -517,6 +524,16 @@ namespace LaneBattle.Core.Wave
                     team.RecentSends.Add((gtick2, def.Id, creep.Id));
                     ApplyGroupSynergy(c.Team, creep, def);
                     Emit(MatchEventType.Sent, c.Team, c.Player, def.Id, creep.Id);
+                    break;
+                }
+                case CommandType.UpgradeSends:
+                {
+                    var team = Teams[c.Team];
+                    int cost = UpgradeSendsCost(team.SendLevel);
+                    if (!Cfg.SendUpgradesEnabled || cost < 0 || p.Gold < cost) { Reject(c); return; }
+                    p.Gold -= cost;
+                    team.SendLevel++;
+                    Emit(MatchEventType.SendsUpgraded, c.Team, c.Player, team.SendLevel, cost);
                     break;
                 }
                 case CommandType.Transfer:
@@ -530,6 +547,11 @@ namespace LaneBattle.Core.Wave
         }
 
         void Reject(MatchCommand c) => Emit(MatchEventType.Rejected, c.Team, c.Player, (int)c.Type, c.A);
+
+        public const int MaxSendLevel = 6;
+        public const int SendLevelHpPercent = 6, SendLevelSpeedPercent = 2;
+        /// <summary>돌격 강화 비용: 25, 40, 55 … (최대 6레벨, 그 뒤 -1).</summary>
+        public static int UpgradeSendsCost(int level) => level >= MaxSendLevel ? -1 : 25 + level * 15;
 
         public int SendCostOf(AttackerDef def)
         {
@@ -650,11 +672,13 @@ namespace LaneBattle.Core.Wave
             }
         }
 
-        /// <summary>뽑기: 일반 60 / 희귀 30 / 영웅 10, 등급 안에서 균등.</summary>
-        public static AttackerDef RollAttacker(Rng rng)
+        /// <summary>뽑기: 등급 확률은 경기 시간에 따라 (WaveCatalog.DrawOdds), 등급 안에서 균등.</summary>
+        public static AttackerDef RollAttacker(Rng rng, int seconds = 0, int legendUnlockSeconds = WaveCatalog.LegendUnlockSeconds)
         {
+            var (c, r, h, _) = WaveCatalog.DrawOdds(seconds);
             int roll = rng.Next(100);
-            var rarity = roll < 60 ? Rarity.Common : roll < 90 ? Rarity.Rare : Rarity.Hero;
+            var rarity = roll < c ? Rarity.Common : roll < c + r ? Rarity.Rare : roll < c + r + h ? Rarity.Hero : Rarity.Legend;
+            if (rarity == Rarity.Legend && seconds < legendUnlockSeconds) rarity = Rarity.Hero;
             var pool = new List<AttackerDef>();
             foreach (var a in WaveCatalog.Attackers) if (a.Rarity == rarity) pool.Add(a);
             return pool[rng.Next(pool.Count)];
@@ -668,7 +692,7 @@ namespace LaneBattle.Core.Wave
             sb.Append(Tick).Append('|').Append(Winner).Append('|');
             for (int t = 0; t < 2; t++)
             {
-                sb.Append(Lanes[t].Hash()).Append('|').Append(Teams[t].Income).Append('|');
+                sb.Append(Lanes[t].Hash()).Append('|').Append(Teams[t].Income).Append('L').Append(Teams[t].SendLevel).Append('|');
                 foreach (var p in Players[t]) { sb.Append('g').Append(p.Gold).Append('h'); foreach (var h in p.Hand) sb.Append(h).Append('.'); }
                 sb.Append('|');
             }

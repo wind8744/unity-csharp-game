@@ -921,9 +921,189 @@ def creep_11(c, f):
     c.oy = 0
 
 
+# ---- legend bosses (64x64) -------------------------------------------------
+def creep_12(c, f):
+    """맹수 왕 - big golden-maned lion with a small crown, walking."""
+    c.oy = -1 if f else 0
+    fur, fur_l, fur_d = (240, 196, 110), (252, 226, 160), (196, 140, 62)
+    mane, mane_d = (206, 118, 52), (150, 78, 38)
+    # tail (behind body) with a tuft
+    c.oline([(14, 40), (7, 32), (6, 22)], fur, 3, fur_d)
+    blob(c, 6, 20, 4, 4, mane, mane_d)
+    # legs: 4, alternate
+    legs4(c, (18, 25, 36, 43), 46, 58, fur, f, w=2)
+    for i, x in enumerate((18, 25, 36, 43)):
+        dx = 1 if (i % 2 == 0) == (f == 0) else -1
+        c.rect(x - 3 + dx, 57, x + 3 + dx, 60, fur_d, dark(fur_d))
+    # body
+    blob(c, 30, 42, 17, 10, fur)
+    blob(c, 34, 46, 10, 5, fur_l, False)
+    # mane: chunky spiky ring around the head
+    for ang in range(0, 360, 30):
+        a = math.radians(ang)
+        tx = round(42 + 17 * math.cos(a)); ty = round(27 + 16 * math.sin(a))
+        bx = round(42 + 10 * math.cos(a)); by = round(27 + 9 * math.sin(a))
+        px_ = -math.sin(a); py_ = math.cos(a)
+        c.poly([(round(bx - 4 * px_), round(by - 4 * py_)), (tx, ty), (round(bx + 4 * px_), round(by + 4 * py_))],
+               mane, mane_d)
+    blob(c, 42, 27, 13, 12, mane, mane_d)
+    blob(c, 40, 25, 8, 7, (222, 136, 66), False)
+    # head + muzzle
+    blob(c, 45, 28, 9, 8, fur)
+    blob(c, 51, 32, 6, 4, fur_l)
+    c.rect(54, 30, 56, 31, P.ink, False)                    # nose
+    c.line([(49, 34), (54, 34)], P.eye)                      # mouth
+    c.rect(49, 35, 49, 36, P.white, False); c.rect(53, 35, 53, 36, P.white, False)   # fangs
+    c.px(49, 37, fur_d); c.px(53, 37, fur_d)
+    eyes(c, 45, 27, 3, style="angry")
+    blush(c, 45, 29, 6)
+    # small crown
+    c.rect(41, 14, 49, 17, P.brass, P.brass_d)
+    c.poly([(41, 14), (43, 10), (45, 14)], P.brass, P.brass_d)
+    c.poly([(45, 14), (47, 10), (49, 14)], P.brass, P.brass_d)
+    c.px(45, 15, P.red); c.px(42, 15, P.cyan); c.px(48, 15, P.cyan)
+    c.oy = 0
+
+
+def creep_13(c, f):
+    """리치 - floating skeletal sorcerer, bone crown, green skull staff, tattered hem."""
+    c.oy = -2 if f else 0
+    robe, robe_d, trim = (46, 92, 104), (28, 60, 72), (118, 82, 168)
+    glow, glow_d = (120, 240, 120), (60, 170, 80)
+    # mist under the hem (hover)
+    blob(c, 28, 57 - (c.oy), 12, 3, (120, 200, 140, 90), False)
+    # staff (behind robe)
+    c.line([(46, 58), (46, 14)], P.bark, 2)
+    # robe with tattered hem
+    hem = [(28, 20), (14, 44), (13, 56), (16, 51), (19, 57), (22, 50), (25, 58), (28, 51), (31, 57),
+           (34, 50), (37, 58), (40, 52), (43, 56), (42, 44)]
+    if f:
+        hem = [(x, y - (1 if i % 2 else 0)) for i, (x, y) in enumerate(hem)]
+    c.poly(hem, robe, robe_d)
+    c.line([(18, 44), (38, 44)], trim)
+    c.rect(24, 34, 32, 35, trim, False)                     # sash
+    # arm + bony hand on staff
+    c.oline([(35, 34), (44, 30)], robe, 3, robe_d)
+    blob(c, 45, 30, 2, 2, P.cream_l, P.cream_d)
+    # hood shape then skull face
+    blob(c, 28, 18, 11, 10, robe)
+    skull(c, 28, 20, 7, P.cream_l, P.eye)
+    for (x, y) in ((25, 20), (31, 20)):
+        blob(c, x, y, 2, 2, (120, 255, 120, 130), False)
+        c.rect(x - 1, y - 1, x + 1, y + 1, glow, False)
+        c.px(x, y, P.white)
+    # bone crown
+    c.rect(20, 11, 36, 13, P.cream, P.cream_d)
+    for x in (21, 26, 31, 35):
+        c.poly([(x - 1, 11), (x, 6), (x + 1, 11)], P.cream, P.cream_d)
+    c.px(28, 12, glow)
+    # green skull orb on the staff
+    blob(c, 46, 10, 7, 7, (120, 255, 120, 90), False)
+    skull(c, 46, 10, 4, glow, P.ink)
+    c.px(43, 7, P.white)
+    c.oy = 0
+
+
+def creep_14(c, f):
+    """고대 드래곤 - larger bronze dragon, broad wings, horns, back spikes, amber eyes."""
+    c.oy = -1 if f else 0
+    body, body_d, belly = (150, 102, 52), (98, 62, 32), (226, 196, 128)
+    wing, wing_d = (122, 74, 40), (86, 48, 28)
+    amber = (255, 196, 70)
+    # wings (behind body)
+    if f == 0:
+        c.poly([(30, 30), (14, 1), (2, 8), (1, 22), (10, 32), (24, 36)], wing, wing_d)
+        c.line([(26, 32), (13, 3)], wing_d); c.line([(26, 33), (3, 10)], wing_d); c.line([(24, 34), (2, 21)], wing_d)
+        c.poly([(32, 28), (26, 6), (36, 12), (38, 22)], wing, wing_d)
+        c.line([(34, 26), (27, 8)], wing_d)
+    else:
+        c.poly([(30, 34), (4, 30), (0, 40), (10, 46), (22, 46)], wing, wing_d)
+        c.line([(26, 36), (5, 31)], wing_d); c.line([(26, 38), (2, 39)], wing_d); c.line([(24, 40), (10, 45)], wing_d)
+        c.poly([(32, 30), (34, 40), (26, 44)], wing, wing_d)
+    # tail with spade tip
+    c.oline([(18, 50), (8, 54), (3, 61)], body, 4, body_d)
+    c.poly([(0, 58), (7, 60), (2, 63)], body_d)
+    # legs
+    for i, x in enumerate((24, 40)):
+        dx = 1 if (i == 0) == (f == 0) else -1
+        blob(c, x + dx, 57, 5, 4, body)
+        for k in (-3, 0, 3):
+            c.px(x + dx + k, 60, P.cream_l)
+    # body + belly plates
+    blob(c, 32, 44, 17, 12, body)
+    blob(c, 33, 48, 11, 7, belly, False)
+    for y in (45, 49, 53):
+        c.line([(24, y), (42, y)], P.tan_d)
+    # back spikes
+    for i in range(4):
+        x = 20 + i * 6
+        c.poly([(x, 34 - i), (x + 2, 28 - i), (x + 4, 34 - i)], body_d, dark(body_d))
+    # neck + head
+    blob(c, 44, 30, 8, 8, body)
+    blob(c, 47, 24, 12, 10, body)
+    blob(c, 56, 28, 7, 4, body)
+    c.px(60, 27, body_d); c.px(62, 28, body_d)
+    # horns + a small crest spike between them
+    c.poly([(41, 17), (37, 3), (46, 15)], P.cream, P.tan_d)
+    c.poly([(50, 15), (57, 3), (55, 17)], P.cream, P.tan_d)
+    c.poly([(46, 16), (48, 11), (50, 16)], body_d, dark(body_d))
+    # amber glowing eyes
+    for (x, y) in ((45, 23), (51, 23)):
+        blob(c, x, y, 3, 3, (255, 200, 80, 100), False)
+        c.rect(x - 1, y - 1, x + 1, y + 1, amber, False)
+        c.px(x, y - 1, P.white)
+    c.line([(50, 30), (55, 31)], P.eye)
+    c.px(52, 32, P.white); c.px(55, 32, P.white)
+    # smoke wisp from the nostril
+    c.px(61, 24, P.grey_l); c.px(62, 22, P.grey_l)
+    c.oy = 0
+
+
+def creep_15(c, f):
+    """타이탄 - huge stone-and-steel giant, blue rune lines, one huge fist, slit visor."""
+    c.oy = -1 if f else 0
+    stone, stone_d = P.stone, P.stone_d
+    steel, steel_d = P.steel, P.steel_d
+    rune = P.cyan
+    # legs, alternate (heavy stomp)
+    for i, x in enumerate((20, 40)):
+        dx = 2 if (i == 0) == (f == 0) else -2
+        c.rrect(x - 7 + dx, 44, x + 7 + dx, 61, 3, stone_d)
+        c.rect(x - 7 + dx, 57, x + 7 + dx, 61, steel_d, dark(steel_d))
+        c.line([(x + dx, 47), (x + dx, 54)], rune)
+    # small left arm (back)
+    c.rrect(2, 22, 11, 44, 4, stone_d)
+    c.rect(3, 40, 10, 45, steel_d, dark(steel_d))
+    # torso
+    c.rrect(10, 16, 48, 50, 8, stone)
+    c.rrect(14, 18, 44, 24, 3, steel, steel_d)                 # shoulder plate
+    c.rect(12, 32, 46, 34, steel_d, False)                     # belt
+    # rune lines on torso
+    c.line([(18, 26), (22, 30), (18, 36), (22, 42)], rune)
+    c.line([(40, 26), (36, 32), (40, 38)], rune)
+    c.rect(28, 38, 30, 44, rune, False)
+    c.px(29, 41, P.white)
+    # huge right arm + fist (front)
+    c.rrect(44, 18, 62, 40, 6, stone)
+    c.rrect(46, 20, 60, 28, 4, steel, steel_d)                 # pauldron
+    c.line([(52, 28), (52, 38)], rune)
+    c.rrect(46, 38, 63, 54, 5, stone_d)                        # fist
+    c.rect(48, 40, 61, 42, steel_d, False)                     # knuckle plate
+    for kx in (50, 54, 58):
+        c.rect(kx - 1, 44, kx + 1, 46, dark(stone_d), False)
+    # small head with slit visor
+    c.rrect(22, 6, 38, 18, 4, steel, steel_d)
+    c.rect(24, 4, 36, 6, steel_d, False)
+    c.rect(24, 11, 36, 13, (30, 40, 60), False)
+    c.line([(26, 12), (34, 12)], rune)
+    c.px(27, 12, P.white); c.px(33, 12, P.white)
+    c.oy = 0
+
+
 CREEPS = {1: creep_1, 2: creep_2, 3: creep_3, 4: creep_4, 5: creep_5, 6: creep_6, 7: creep_7, 8: creep_8,
-          9: creep_9, 10: creep_10, 11: creep_11}
-CREEP_SIZE = {9: 64, 10: 64}
+          9: creep_9, 10: creep_10, 11: creep_11,
+          12: creep_12, 13: creep_13, 14: creep_14, 15: creep_15}
+CREEP_SIZE = {9: 64, 10: 64, 12: 64, 13: 64, 14: 64, 15: 64}
 
 # --------------------------------------------------------------------------
 # world tiles
@@ -1242,6 +1422,16 @@ def ui_card(c, border, hero=False):
             spark4(c, x, y, 3, P.yellow_l, False)
 
 
+def ui_card_legend(c):
+    """Same layout as ui_card_hero: deep purple border, thin gold inner line, corner gems."""
+    border = (86, 48, 134)
+    ui_card(c, border, False)
+    c.rrect(3, 3, 92, 124, 6, None, P.brass)
+    for (x, y) in ((5, 5), (90, 5), (5, 122), (90, 122)):
+        c.poly([(x, y - 2), (x + 2, y), (x, y + 2), (x - 2, y)], P.cyan, (60, 110, 150))
+        c.px(x, y - 1, P.white)
+
+
 def ui_slot(c):
     c.rrect(0, 0, 39, 39, 6, (120, 90, 60))
     c.rrect(1, 1, 38, 38, 5, (214, 196, 160), False)
@@ -1540,6 +1730,7 @@ def build():
     make("ui_card", 96, 128, lambda c: ui_card(c, (170, 118, 72)))
     make("ui_card_rare", 96, 128, lambda c: ui_card(c, (90, 140, 220)))
     make("ui_card_hero", 96, 128, lambda c: ui_card(c, P.brass, True))
+    make("ui_card_legend", 96, 128, ui_card_legend)
     make("ui_slot", 40, 40, ui_slot)
     for name in ("icon_coin", "icon_heart", "icon_income", "icon_star", "icon_clock", "icon_skull", "icon_wing",
                  "icon_shield", "icon_sword", "icon_range", "icon_speed", "icon_leaf", "icon_fire", "icon_gear",
@@ -1557,7 +1748,7 @@ def expected_names():
     names = []
     for t in range(1, 18):
         names += [f"tower_{t}_0", f"tower_{t}_1", f"tower_{t}_atk"]
-    for k in range(1, 12):
+    for k in range(1, 16):
         names += [f"creep_{k}_0", f"creep_{k}_1"]
     names += ["tile_grass_0", "tile_grass_1", "tile_path", "tile_slot", "tile_slot_hover", "base", "gate",
               "flag_blue", "flag_red"]
@@ -1567,7 +1758,7 @@ def expected_names():
     names += [f"fx_star_{i}" for i in range(4)] + [f"fx_heal_{i}" for i in range(3)]
     names += ["fx_slow", "fx_burn", "fx_silence", "fx_stealth", "fx_shadow"]
     names += ["ui_panel", "ui_panel_dark", "ui_button", "ui_button_green", "ui_button_blue", "ui_button_grey",
-              "ui_card", "ui_card_rare", "ui_card_hero", "ui_slot"]
+              "ui_card", "ui_card_rare", "ui_card_hero", "ui_card_legend", "ui_slot"]
     names += ["icon_coin", "icon_heart", "icon_income", "icon_star", "icon_clock", "icon_skull", "icon_wing",
               "icon_shield", "icon_sword", "icon_range", "icon_speed", "icon_leaf", "icon_fire", "icon_gear",
               "icon_lock", "icon_check", "icon_eye", "icon_merge"]
@@ -1630,6 +1821,9 @@ def main():
     for g, prefix in groups.items():
         sel = [(n, im) for n, im in SPRITES if n.startswith(prefix)]
         contact_sheet(sel, os.path.join(SCRATCH, f"contact_{g}.png"), scale=4, max_w=1400)
+    legends = tuple(f"creep_{k}_" for k in (12, 13, 14, 15))
+    sel = [(n, im) for n, im in SPRITES if n.startswith(legends)]
+    contact_sheet(sel, os.path.join(SCRATCH, "contact_legends.png"), scale=4, max_w=1400)
     print("contact sheet:", CONTACT)
 
 
