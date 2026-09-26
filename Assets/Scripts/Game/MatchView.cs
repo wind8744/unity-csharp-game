@@ -36,6 +36,9 @@ namespace LaneBattle.Game
         Text _time, _wave, _myHp, _enemyHp, _gold, _income, _banner, _msg, _handTitle, _selectedInfo, _mission, _synergy, _eventText, _intel, _team;
         Image _myHpBar, _enemyHpBar;
         Button _sendUp, _xpBtn; Text _drawInfo, _levelText;
+        // 건설 (스타 방식): B → 목록, 단축키/클릭 → 커서에 타워 그림(고스트) → 빈 칸 클릭
+        SpriteRenderer _ghost; int _ghostTowerId = -1; Transform _buildMenu; bool _buildMenuOpen; int _hoveredCard = -1;
+        static readonly (Key key, string label)[] BuildKeys = { (Key.Q, "Q"), (Key.W, "W"), (Key.E, "E"), (Key.R, "R"), (Key.A, "A"), (Key.S, "S"), (Key.D, "D"), (Key.F, "F"), (Key.G, "G") };
         readonly List<Button> _shopButtons = new List<Button>();
         readonly List<Image> _shopImages = new List<Image>();
         int _lastHandVersion = -1, _lastOfferVersion = -1, _lastActionVersion = -1, _selectedTower = -1, _lastShopGold = -1;
@@ -65,6 +68,8 @@ namespace LaneBattle.Game
                 if (a == "-nosave") GameSession.NoSave = true;
                 if (a == "-pick") { var t = _selectedTower >= 0 ? Sim.OwnLane(MyTeam).TowerAt(_selectedTower) : null; if (t != null) { var ids = Sim.MergeCandidates(MyTeam, t); if (ids.Count > 2) BeginPick(PickMode.Merge, ids); } }
                 if (a == "-recipes") ToggleRecipes();
+                if (a == "-buildmenu") ToggleBuildMenu();
+                if (a == "-ghost") StartGhost(5);
                 if (a == "-menu") ToggleMenu();
             }
             for (int i = 0; i < args.Length - 1; i++)
@@ -311,36 +316,56 @@ namespace LaneBattle.Game
             var kb = Keyboard.current;
             if (kb != null && kb.escapeKey.wasPressedThisFrame)
             {
-                if (_pick != PickMode.None) CancelPick();
+                if (_ghostTowerId >= 0) CancelGhost();
+                else if (_buildMenuOpen) ToggleBuildMenu();
+                else if (_pick != PickMode.None) CancelPick();
                 else if (_recipeOpen) ToggleRecipes();
                 else if (_selectedTower >= 0) SelectTower(-1);
                 else ToggleMenu();
             }
-            if (kb != null && !_menuOpen && !Sim.IsOver)
+            if (kb != null && !_menuOpen && !Sim.IsOver && !BotPlaysHuman)
             {
-                if (kb.spaceKey.wasPressedThisFrame) TogglePause();
-                if (kb.digit1Key.wasPressedThisFrame && Net == null) Speed = 1f;
-                if (kb.digit2Key.wasPressedThisFrame && Net == null) Speed = 2f;
-                if (kb.digit3Key.wasPressedThisFrame && Net == null) Speed = 4f;
-                if (kb.dKey.wasPressedThisFrame) Draw();
-                if (kb.fKey.wasPressedThisFrame) { Draw(); Draw(); Draw(); }
-                if (kb.eKey.wasPressedThisFrame) BuyXp();
-                for (int i = 0; i < WaveCatalog.BasicTowers.Length; i++)
+                if (_buildMenuOpen)
                 {
-                    var key = i switch { 0 => kb.qKey, 1 => kb.wKey, 2 => kb.eKey, 3 => kb.rKey, 4 => kb.tKey, 5 => kb.yKey, 6 => kb.uKey, 7 => kb.iKey, _ => kb.oKey };
-                    if (key.wasPressedThisFrame) { SelectedTowerId = WaveCatalog.BasicTowers[i].Id; RefreshShop(); }
+                    // 건설 목록이 열려 있으면 글자 키는 타워 고르기
+                    for (int i = 0; i < BuildKeys.Length && i < WaveCatalog.BasicTowers.Length; i++)
+                        if (kb[BuildKeys[i].key].wasPressedThisFrame) { StartGhost(WaveCatalog.BasicTowers[i].Id); break; }
+                }
+                else
+                {
+                    if (kb.spaceKey.wasPressedThisFrame) TogglePause();
+                    if (kb.digit1Key.wasPressedThisFrame && Net == null) Speed = 1f;
+                    if (kb.digit2Key.wasPressedThisFrame && Net == null) Speed = 2f;
+                    if (kb.digit3Key.wasPressedThisFrame && Net == null) Speed = 4f;
+                    if (kb.dKey.wasPressedThisFrame) Draw();
+                    if (kb.fKey.wasPressedThisFrame) BuyXp();
+                    if (kb.wKey.wasPressedThisFrame && _hoveredCard >= 0) SendCard(_hoveredCard);
+                    if (kb.bKey.wasPressedThisFrame) ToggleBuildMenu();
                 }
             }
             var mouse = Mouse.current;
-            if (mouse == null || Sim.IsOver || BotPlaysHuman || Sim.IsPaused || _menuOpen || _recipeOpen) { _myLane?.SetHover(-1, -1); return; }
+            if (mouse == null || Sim.IsOver || BotPlaysHuman || Sim.IsPaused || _menuOpen || _recipeOpen) { _myLane?.SetHover(-1, -1); if (_ghost != null) _ghost.enabled = false; return; }
             var cam = Camera.main; if (cam == null) return;
             var w = cam.ScreenToWorldPoint(new Vector3(mouse.position.ReadValue().x, mouse.position.ReadValue().y, 10));
             bool overUi = EventSystem.current != null && EventSystem.current.IsPointerOverGameObject();
             int col = -1, row = -1;
             bool onSlot = !overUi && _myLane.WorldToSlot(w, out col, out row);
             _myLane.SetHover(onSlot ? col : -1, onSlot ? row : -1);
+            UpdateGhost(w, onSlot, col, row, overUi);
             bool left = mouse.leftButton.wasPressedThisFrame, right = mouse.rightButton.wasPressedThisFrame;
             if (!left && !right || overUi) return;
+            if (_ghostTowerId >= 0)
+            {
+                if (right) { CancelGhost(); return; }
+                var lane0 = Sim.OwnLane(MyTeam);
+                if (onSlot && lane0.CanBuildAt(col, row))
+                {
+                    _pending.Add(MatchCommand.Build(MyTeam, MyPlayer, _ghostTowerId, col, row));
+                    if (!(kb != null && (kb.leftShiftKey.isPressed || kb.rightShiftKey.isPressed))) CancelGhost();   // 시프트를 누르고 있으면 계속 짓기
+                }
+                else { Sfx.Play("error", 0.4f); ShowMsg("여기엔 지을 수 없습니다 (경로 위·다른 타워·진영 밖)"); }
+                return;
+            }
             if (!onSlot) { if (left) SelectTower(-1); return; }
             var existing = Sim.OwnLane(MyTeam).TowerAtCell(col, row);
             if (_pick != PickMode.None)
@@ -351,11 +376,70 @@ namespace LaneBattle.Game
             }
             if (left)
             {
-                if (existing == null) { SelectTower(-1); _pending.Add(MatchCommand.Build(MyTeam, MyPlayer, SelectedTowerId, col, row)); }
+                if (existing == null) { SelectTower(-1); ShowMsg("타워를 지으려면 B 또는 상점에서 타워를 고른 뒤 빈 칸을 클릭하세요", 2.5f); }
                 else if (existing.Owner == MyPlayer) { SelectTower(existing.Id == _selectedTower ? -1 : existing.Id); Sfx.Play("click", 0.5f); }
                 else ShowMsg($"팀원 P{existing.Owner + 1}의 타워입니다");
             }
             else if (existing != null && existing.Owner == MyPlayer) { _pending.Add(MatchCommand.Sell(MyTeam, MyPlayer, existing.Id)); SelectTower(-1); }
+        }
+
+        // ─────────────────────────── 건설 고스트 ───────────────────────────
+
+        public void StartGhost(int towerId)
+        {
+            _ghostTowerId = towerId; SelectedTowerId = towerId;
+            if (_buildMenuOpen) ToggleBuildMenu();
+            if (_ghost == null)
+            {
+                var go = new GameObject("Ghost"); go.transform.SetParent(transform, false);
+                _ghost = go.AddComponent<SpriteRenderer>(); _ghost.sortingOrder = 25;
+            }
+            _ghost.sprite = Art.Tower(towerId, 0); _ghost.enabled = true;
+            RefreshShop();
+            Sfx.Play("click", 0.5f);
+            ShowMsg($"{WaveCatalog.Tower(towerId).Name}: 빈 칸을 클릭해 짓기 (시프트+클릭 = 연속, 우클릭/ESC = 취소)", 3f);
+        }
+
+        void CancelGhost()
+        {
+            _ghostTowerId = -1;
+            if (_ghost != null) _ghost.enabled = false;
+            RefreshShop();
+        }
+
+        void UpdateGhost(Vector3 world, bool onSlot, int col, int row, bool overUi)
+        {
+            if (_ghost == null || _ghostTowerId < 0) return;
+            _ghost.enabled = !overUi;
+            if (overUi) return;
+            var p = Sim.Player(MyTeam, MyPlayer);
+            var def = WaveCatalog.Tower(_ghostTowerId);
+            bool ok = onSlot && Sim.OwnLane(MyTeam).CanBuildAt(col, row) && p.Gold >= def.Cost;
+            _ghost.transform.position = onSlot ? _myLane.SlotCenter(col, row, -1f) : new Vector3(world.x, world.y, -1f);
+            _ghost.color = ok ? new Color(0.7f, 1f, 0.7f, 0.85f) : new Color(1f, 0.6f, 0.6f, 0.7f);
+        }
+
+        void ToggleBuildMenu()
+        {
+            _buildMenuOpen = !_buildMenuOpen;
+            if (_buildMenu == null) return;
+            _buildMenu.gameObject.SetActive(_buildMenuOpen);
+            if (!_buildMenuOpen) return;
+            _buildMenu.SetAsLastSibling();
+            UiKit.Clear(_buildMenu);
+            UiKit.Label(_buildMenu, "Title", 0, 6, 460, 20, "건설 — 글자 키를 누르거나 클릭 (ESC 닫기)", 12, TextAnchor.MiddleCenter, UiKit.Ink);
+            var p = Sim.Player(MyTeam, MyPlayer);
+            for (int i = 0; i < WaveCatalog.BasicTowers.Length; i++)
+            {
+                var d = WaveCatalog.BasicTowers[i]; int id = d.Id;
+                float x = 10 + (i % 3) * 150, y = 30 + (i / 3) * 44;
+                var b = UiKit.SpriteButton(_buildMenu, "B" + id, x, y, 144, 40, "", () => StartGhost(id), p.Gold >= d.Cost ? "ui_button_grey" : "ui_button_grey", 11);
+                b.GetComponentInChildren<Text>().text = "";
+                UiKit.IconSprite(b.transform, "Icon", 4, 4, 32, 32, Art.Tower(d.Id, 0));
+                UiKit.Label(b.transform, "Key", 38, 2, 24, 20, $"[{BuildKeys[i].label}]", 13, TextAnchor.MiddleLeft, UiKit.Gold);
+                UiKit.Label(b.transform, "Name", 62, 2, 80, 20, d.Name, 11, TextAnchor.MiddleLeft, Color.white);
+                UiKit.IconLabel(b.transform, "Cost", 40, 20, 100, 18, "icon_coin", $"{d.Cost}  {TowerInfo.Role(d).label}", 9, p.Gold >= d.Cost ? Color.white : new Color(1f, 0.6f, 0.6f));
+            }
         }
 
         void SelectTower(int id) { if (id != _selectedTower) CancelPick(); _selectedTower = id; _myLane.SelectedTowerId = id; }
@@ -485,14 +569,13 @@ namespace LaneBattle.Game
             UiKit.SpritePanel(ui, "Bottom", -6, 504, 1292, 222, "ui_panel");
             _handTitle = UiKit.Label(ui, "HandTitle", 16, 510, 540, 18, "", 12, TextAnchor.MiddleLeft, UiKit.Ink);
             _hand = UiKit.Rect(ui, "Hand", 16, 530, 540, 118);
-            UiKit.SpriteButton(ui, "Draw", 16, 654, 100, 34, "뽑기 (D)", Draw, "ui_button", 14);
-            UiKit.SpriteButton(ui, "Draw3", 120, 654, 74, 34, "×3 (F)", () => { Draw(); Draw(); Draw(); }, "ui_button", 13);
-            _xpBtn = UiKit.SpriteButton(ui, "Xp", 200, 654, 118, 34, "", BuyXp, "ui_button_blue", 11);
+            UiKit.SpriteButton(ui, "Draw", 16, 654, 110, 34, "뽑기 (D)", Draw, "ui_button", 14);
+            _xpBtn = UiKit.SpriteButton(ui, "Xp", 132, 654, 186, 34, "", BuyXp, "ui_button_blue", 11);
             _sendUp = UiKit.SpriteButton(ui, "SendUp", 324, 654, 126, 34, "", UpgradeSends, "ui_button_green", 11);
             _drawInfo = UiKit.Label(ui, "DrawInfo", 456, 654, 104, 34, "", 9, TextAnchor.MiddleLeft, UiKit.InkSoft);
             _levelText = UiKit.Label(ui, "LevelText", 340, 510, 216, 18, "", 11, TextAnchor.MiddleRight, UiKit.Ink);
 
-            UiKit.Label(ui, "ShopTitle", 574, 510, 450, 18, "타워 (Q~O) — 오른쪽 위 아이콘이 역할: 광역·원거리·감속·화상·대공·지원", 11, TextAnchor.MiddleLeft, UiKit.Ink);
+            UiKit.Label(ui, "ShopTitle", 574, 510, 450, 18, "타워 — 클릭하거나 B 로 목록을 열고 글자 키 → 커서에 뜬 타워를 빈 칸에 클릭", 11, TextAnchor.MiddleLeft, UiKit.Ink);
             _shop = UiKit.Rect(ui, "Shop", 574, 530, 450, 66);
             float x = 0;
             foreach (var d in WaveCatalog.BasicTowers)
@@ -500,7 +583,7 @@ namespace LaneBattle.Game
                 int id = d.Id;
                 var img = UiKit.SpritePanel(_shop, "T" + id, x, 0, 46, 66, "ui_slot");
                 var b = img.gameObject.AddComponent<Button>(); b.targetGraphic = img;
-                b.onClick.AddListener(() => { SelectedTowerId = id; Sfx.Play("click", 0.5f); RefreshShop(); });
+                b.onClick.AddListener(() => StartGhost(id));
                 UiKit.IconSprite(img.transform, "Icon", 5, 3, 36, 36, Art.Tower(d.Id, 0));
                 UiKit.Icon(img.transform, "Role", 31, 1, 14, TowerInfo.Role(d).icon);
                 UiKit.IconLabel(img.transform, "Cost", 6, 42, 40, 18, "icon_coin", d.Cost.ToString(), 11, UiKit.Ink);
@@ -521,6 +604,8 @@ namespace LaneBattle.Game
             _recipePanel = UiKit.SpritePanel(ui, "RecipePanel", 200, 30, 880, 660, "ui_panel").transform;
             _recipePanel.gameObject.SetActive(false);
             _menuPanel = UiKit.SpritePanel(ui, "MenuPanel", 440, 200, 400, 300, "ui_panel_dark").transform;
+            _buildMenu = UiKit.SpritePanel(ui, "BuildMenu", 570, 348, 460, 166, "ui_panel").transform;
+            _buildMenu.gameObject.SetActive(false);
             _menuPanel.gameObject.SetActive(false);
             _resultPanel = UiKit.SpritePanel(ui, "ResultPanel", 340, 120, 600, 400, "ui_panel_dark").transform;
             _resultPanel.gameObject.SetActive(false);
@@ -540,20 +625,21 @@ namespace LaneBattle.Game
             for (int i = 0; i < _shopImages.Count; i++)
             {
                 var d = WaveCatalog.BasicTowers[i];
-                bool sel = d.Id == SelectedTowerId, can = p.Gold >= d.Cost;
+                bool sel = d.Id == _ghostTowerId, can = p.Gold >= d.Cost;
                 _shopImages[i].color = sel ? new Color(1f, 0.95f, 0.6f) : can ? Color.white : new Color(0.7f, 0.7f, 0.7f, 0.8f);
                 _shopImages[i].transform.localScale = Vector3.one * (sel ? 1.06f : 1f);
             }
-            if (_selectedInfo != null) _selectedInfo.text = $"선택: {WaveCatalog.Tower(SelectedTowerId).Name} — {TowerInfo.Describe(WaveCatalog.Tower(SelectedTowerId))}";
+            if (_selectedInfo != null) _selectedInfo.text = _ghostTowerId >= 0 ? $"짓는 중: {WaveCatalog.Tower(_ghostTowerId).Name} — {TowerInfo.Describe(WaveCatalog.Tower(_ghostTowerId))}" : $"마지막 선택: {WaveCatalog.Tower(SelectedTowerId).Name} — {TowerInfo.Describe(WaveCatalog.Tower(SelectedTowerId))}";
         }
 
         void BuildHand()
         {
             if (_hand == null) return;
             UiKit.Clear(_hand);
+            _hoveredCard = -1;
             var p = Sim.Player(MyTeam, MyPlayer);
             _lastHandVersion = HandVersion();
-            _handTitle.text = $"내 손패 {p.Hand.Count}/{p.HandMax(Sim.Cfg)} — 카드를 누르면 상대 진영으로 보냅니다" + (p.FreeSends > 0 ? $"  (무료 보내기 {p.FreeSends}회)" : "");
+            _handTitle.text = $"내 손패 {p.Hand.Count}/{p.HandMax(Sim.Cfg)} — 카드 클릭 또는 카드 위에서 W = 보내기" + (p.FreeSends > 0 ? $"  (무료 보내기 {p.FreeSends}회)" : "");
             int slots = p.HandMax(Sim.Cfg);
             const float ch = 118, gap = 4;
             float cw = Mathf.Min(84f, (540f - gap * (slots - 1)) / slots);
@@ -566,6 +652,8 @@ namespace LaneBattle.Game
                 var img = UiKit.SpritePanel(_hand, "C" + i, i * (cw + gap), 0, cw, ch, frame);
                 var b = img.gameObject.AddComponent<Button>(); b.targetGraphic = img;
                 b.onClick.AddListener(() => { Sfx.Play("click", 0.5f); SendCard(idx); });
+                var hover = img.gameObject.AddComponent<CardHover>(); hover.Index = idx;
+                hover.Enter = i2 => _hoveredCard = i2; hover.Exit = i2 => { if (_hoveredCard == i2) _hoveredCard = -1; };
                 bool can = p.Gold >= cost && !(Sim.ActiveEvent == EventId.Storm && d.Flying);
                 img.color = can ? Color.white : new Color(0.65f, 0.65f, 0.65f, 0.9f);
                 float pw = cw - 28;
@@ -878,11 +966,19 @@ namespace LaneBattle.Game
                 var (c, r, h, l) = WaveCatalog.DrawOdds(p.Level);
                 _drawInfo.text = $"일반{c} 희귀{r}\n영웅{h} 전설{l}%";
                 bool maxLv = p.Level >= WaveCatalog.MaxLevel;
-                _xpBtn.GetComponentInChildren<Text>().text = maxLv ? $"Lv.{p.Level} 최대" : $"경험치 +{WaveCatalog.XpBuyAmount} ({WaveCatalog.XpBuyCost}골드, E)";
+                _xpBtn.GetComponentInChildren<Text>().text = maxLv ? $"Lv.{p.Level} 최대" : $"레벨업 경험치 +{WaveCatalog.XpBuyAmount} ({WaveCatalog.XpBuyCost}골드, F)";
                 _xpBtn.interactable = !maxLv && p.Gold >= WaveCatalog.XpBuyCost;
                 _levelText.text = maxLv ? $"레벨 {p.Level} (최대)" : $"레벨 {p.Level}  경험치 {p.Xp}/{WaveCatalog.XpToNext(p.Level)}  (수입마다 +{WaveCatalog.XpPerIncome})";
             }
             _income.text = $"팀 인컴 {Sim.Teams[MyTeam].Income} (상대 {Sim.Teams[EnemyTeam].Income}) · 다음 수입 {incomeIn}초 · 내 라인 처치 {my.Kills} 누수 {my.Leaked}";
         }
+    }
+
+    /// <summary>손패 카드 위에 커서가 있는지 (W 로 보내기).</summary>
+    public sealed class CardHover : MonoBehaviour, IPointerEnterHandler, IPointerExitHandler
+    {
+        public int Index; public System.Action<int> Enter, Exit;
+        public void OnPointerEnter(PointerEventData e) => Enter?.Invoke(Index);
+        public void OnPointerExit(PointerEventData e) => Exit?.Invoke(Index);
     }
 }
