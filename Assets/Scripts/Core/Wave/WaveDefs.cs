@@ -22,6 +22,7 @@ namespace LaneBattle.Core.Wave
         public int AuraAtkPercent;      // 드루이드: 사거리 안 아군 타워 공격 +%
         public int AuraSpeedPercentMachine; // 드론: 사거리 안 기계 타워 공속 +%
         public int AirMultiplier = 1, GiantMultiplier = 1;
+        public int ChainCount, ChainRange10, ChainPercent = 70; // 연쇄: 맞은 유닛 주변으로 N번 튄다 (피해 %)
         public int Tier = 1;            // 2 = 합성 타워
         public int RecipeA, RecipeB;    // 합성 재료 타워 id (Tier 2 만)
         public bool IsSupport => Atk == 0;
@@ -48,23 +49,24 @@ namespace LaneBattle.Core.Wave
     {
         public static readonly TowerDef[] Towers =
         {
+            // 기본 9종. 역할이 겹치지 않게: 단일·대공 / 근접 광역 감속 / 지원 / 화상 / 광역 / 대공 특화 / 원거리 저격 / 광역 강타(거인) / 지원. 문서 v0.4 10절.
             new TowerDef { Id = 1, Name = "나무 궁수",    Cost = 6,  Atk = 4,  AttacksPer10s = 10, Range10 = 30, Tribe = DefTribe.Forest,  Job = DefJob.Archer,  AntiAir = true },
-            new TowerDef { Id = 2, Name = "가시 덤불",    Cost = 6,  Atk = 3,  AttacksPer10s = 12, Range10 = 15, Tribe = DefTribe.Forest,  Job = DefJob.Warrior, SlowPercent = 30, SlowSeconds = 2 },
+            new TowerDef { Id = 2, Name = "가시 덤불",    Cost = 6,  Atk = 3,  AttacksPer10s = 12, Range10 = 15, Tribe = DefTribe.Forest,  Job = DefJob.Warrior, SplashRadius10 = 10, SlowPercent = 30, SlowSeconds = 2 },
             new TowerDef { Id = 3, Name = "숲의 드루이드", Cost = 10, Atk = 0,  AttacksPer10s = 0,  Range10 = 20, Tribe = DefTribe.Forest,  Job = DefJob.Mage,    AuraAtkPercent = 15 },
-            new TowerDef { Id = 4, Name = "화염 창탑",    Cost = 7,  Atk = 5,  AttacksPer10s = 10, Range10 = 20, Tribe = DefTribe.Fire,    Job = DefJob.Warrior, BurnPerSec = 2, BurnSeconds = 3 },
-            new TowerDef { Id = 5, Name = "불꽃 술사",    Cost = 9,  Atk = 7,  AttacksPer10s = 6,  Range10 = 20, Tribe = DefTribe.Fire,    Job = DefJob.Mage,    SplashRadius10 = 10 },
-            new TowerDef { Id = 6, Name = "불사조",      Cost = 14, Atk = 9,  AttacksPer10s = 9,  Range10 = 30, Tribe = DefTribe.Fire,    Job = DefJob.Archer,  AntiAir = true, AirMultiplier = 2 },
-            new TowerDef { Id = 7, Name = "태엽 포탑",    Cost = 8,  Atk = 12, AttacksPer10s = 4,  Range10 = 40, Tribe = DefTribe.Machine, Job = DefJob.Archer },
-            new TowerDef { Id = 8, Name = "강철 대포",    Cost = 15, Atk = 25, AttacksPer10s = 3,  Range10 = 30, Tribe = DefTribe.Machine, Job = DefJob.Warrior, GiantMultiplier = 2 },
+            new TowerDef { Id = 4, Name = "화염 창탑",    Cost = 7,  Atk = 4,  AttacksPer10s = 10, Range10 = 20, Tribe = DefTribe.Fire,    Job = DefJob.Warrior, BurnPerSec = 3, BurnSeconds = 3 },
+            new TowerDef { Id = 5, Name = "불꽃 술사",    Cost = 9,  Atk = 7,  AttacksPer10s = 6,  Range10 = 20, Tribe = DefTribe.Fire,    Job = DefJob.Mage,    SplashRadius10 = 12 },
+            new TowerDef { Id = 6, Name = "불사조",      Cost = 14, Atk = 8,  AttacksPer10s = 9,  Range10 = 35, Tribe = DefTribe.Fire,    Job = DefJob.Archer,  AntiAir = true, AirMultiplier = 2 },
+            new TowerDef { Id = 7, Name = "태엽 포탑",    Cost = 8,  Atk = 14, AttacksPer10s = 4,  Range10 = 45, Tribe = DefTribe.Machine, Job = DefJob.Archer },
+            new TowerDef { Id = 8, Name = "강철 대포",    Cost = 15, Atk = 24, AttacksPer10s = 3,  Range10 = 30, Tribe = DefTribe.Machine, Job = DefJob.Warrior, SplashRadius10 = 7, GiantMultiplier = 2 },
             new TowerDef { Id = 9, Name = "수리 드론",    Cost = 8,  Atk = 0,  AttacksPer10s = 0,  Range10 = 20, Tribe = DefTribe.Machine, Job = DefJob.Mage,    AuraSpeedPercentMachine = 25 },
-            // ── 합성 타워 (Tier 2): 재료 두 개를 합치면 생긴다. 비용은 재료 합 (판매 환불 기준). 문서 19절.
+            // ── 합성 타워 (Tier 2): 재료 두 개의 역할을 합친다. 비용은 재료 합 (판매 환불 기준).
             new TowerDef { Id = 10, Name = "불화살 사수", Cost = 13, Atk = 9,  AttacksPer10s = 12, Range10 = 35, Tribe = DefTribe.Fire,    Job = DefJob.Archer,  AntiAir = true, BurnPerSec = 3, BurnSeconds = 3, Tier = 2, RecipeA = 1, RecipeB = 4 },
             new TowerDef { Id = 11, Name = "가시 폭발꽃", Cost = 15, Atk = 10, AttacksPer10s = 6,  Range10 = 20, Tribe = DefTribe.Forest,  Job = DefJob.Mage,    SplashRadius10 = 15, SlowPercent = 30, SlowSeconds = 2, Tier = 2, RecipeA = 2, RecipeB = 5 },
             new TowerDef { Id = 12, Name = "화염 방사기", Cost = 17, Atk = 7,  AttacksPer10s = 16, Range10 = 25, Tribe = DefTribe.Machine, Job = DefJob.Mage,    SplashRadius10 = 8, BurnPerSec = 3, BurnSeconds = 3, Tier = 2, RecipeA = 7, RecipeB = 5 },
             new TowerDef { Id = 13, Name = "거목 투석기", Cost = 25, Atk = 30, AttacksPer10s = 3,  Range10 = 40, Tribe = DefTribe.Forest,  Job = DefJob.Warrior, SplashRadius10 = 12, GiantMultiplier = 2, Tier = 2, RecipeA = 8, RecipeB = 3 },
-            new TowerDef { Id = 14, Name = "번개 비행선", Cost = 22, Atk = 14, AttacksPer10s = 8,  Range10 = 40, Tribe = DefTribe.Machine, Job = DefJob.Archer,  AntiAir = true, AirMultiplier = 2, SplashRadius10 = 6, Tier = 2, RecipeA = 6, RecipeB = 9 },
+            new TowerDef { Id = 14, Name = "번개 비행선", Cost = 22, Atk = 12, AttacksPer10s = 8,  Range10 = 40, Tribe = DefTribe.Machine, Job = DefJob.Archer,  AntiAir = true, AirMultiplier = 2, ChainCount = 3, ChainRange10 = 15, ChainPercent = 70, Tier = 2, RecipeA = 6, RecipeB = 9 },
             new TowerDef { Id = 15, Name = "저격 드론",   Cost = 14, Atk = 22, AttacksPer10s = 5,  Range10 = 55, Tribe = DefTribe.Machine, Job = DefJob.Archer,  AntiAir = true, Tier = 2, RecipeA = 1, RecipeB = 9 },
-            new TowerDef { Id = 16, Name = "철갑 가시",   Cost = 21, Atk = 18, AttacksPer10s = 5,  Range10 = 20, Tribe = DefTribe.Machine, Job = DefJob.Warrior, SlowPercent = 40, SlowSeconds = 2, GiantMultiplier = 2, Tier = 2, RecipeA = 2, RecipeB = 8 },
+            new TowerDef { Id = 16, Name = "철갑 가시",   Cost = 21, Atk = 18, AttacksPer10s = 5,  Range10 = 20, Tribe = DefTribe.Machine, Job = DefJob.Warrior, SplashRadius10 = 8, SlowPercent = 40, SlowSeconds = 2, GiantMultiplier = 2, Tier = 2, RecipeA = 2, RecipeB = 8 },
             new TowerDef { Id = 17, Name = "화염 정령",   Cost = 19, Atk = 6,  AttacksPer10s = 8,  Range10 = 25, Tribe = DefTribe.Fire,    Job = DefJob.Mage,    SplashRadius10 = 10, AuraAtkPercent = 20, Tier = 2, RecipeA = 3, RecipeB = 5 },
         };
 
@@ -144,5 +146,28 @@ namespace LaneBattle.Core.Wave
             foreach (var (id, n, mult) in BaseWaves[waveIndex]) parts.Add($"{Attacker(id).Name} {n}" + (mult > 1 ? $"(체력×{mult})" : ""));
             return (IsBossWave(waveIndex) ? "보스: " : "") + string.Join(", ", parts);
         }
+    }
+
+    /// <summary>타워 역할 분류 (수치에서 계산). 기본 9종은 서로 다른 역할을 갖도록 수치를 정했다.</summary>
+    public static class TowerRoles
+    {
+        /// <summary>역할 이름과 아이콘 이름. 상점·합성표·행동 패널에 보인다.</summary>
+        public static (string label, string icon) Of(TowerDef d)
+        {
+            if (d.IsSupport) return (d.AuraAtkPercent > 0 ? "지원·공격 오라" : "지원·공속 오라", "icon_shield");
+            var parts = new System.Collections.Generic.List<string>();
+            if (d.ChainCount > 0) parts.Add("연쇄");
+            if (d.SplashRadius10 >= 10) parts.Add("광역"); else if (d.SplashRadius10 > 0) parts.Add("소광역");
+            if (d.Range10 >= 40) parts.Add("원거리");
+            if (d.Range10 <= 15) parts.Add("근접");
+            if (d.SlowPercent > 0) parts.Add("감속");
+            if (d.BurnPerSec > 0) parts.Add("화상");
+            if (d.GiantMultiplier > 1) parts.Add("대거인");
+            if (d.AirMultiplier > 1) parts.Add("대공 특화"); else if (d.AntiAir) parts.Add("대공");
+            if (parts.Count == 0) parts.Add("단일");
+            string icon = d.ChainCount > 0 ? "proj_bolt" : d.SplashRadius10 >= 10 ? "fx_boom_1" : d.Range10 >= 40 ? "icon_range" : d.AirMultiplier > 1 ? "icon_wing" : d.SlowPercent > 0 ? "fx_slow" : d.BurnPerSec > 0 ? "fx_burn" : d.GiantMultiplier > 1 ? "icon_sword" : "icon_sword";
+            return (string.Join("·", parts), icon);
+        }
+
     }
 }

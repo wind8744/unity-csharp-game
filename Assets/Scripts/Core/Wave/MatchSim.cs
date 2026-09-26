@@ -31,7 +31,7 @@ namespace LaneBattle.Core.Wave
 
         // 인원수별 기본값 (봇 스윕으로 결정, 문서 v0.4 3·8절): 기지 40/120/360, 웨이브 100/130/130%
         public MapDef Map => MapOverride ?? MapCatalog.ForPlayers(PlayersPerTeam);
-        public int BaseHp => BaseHpOverride > 0 ? BaseHpOverride : PlayersPerTeam switch { 1 => 40, 2 => 80, _ => 160 };
+        public int BaseHp => BaseHpOverride > 0 ? BaseHpOverride : PlayersPerTeam switch { 1 => 40, 2 => 60, _ => 100 };
         public int WaveScalePercent => WaveScaleOverride > 0 ? WaveScaleOverride : PlayersPerTeam switch { 1 => 100, _ => 130 };
 
         public LaneConfig MakeLaneConfig() => new LaneConfig

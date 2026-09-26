@@ -419,7 +419,7 @@ namespace LaneBattle.Game
             UiKit.SpriteButton(ui, "Draw", 16, 654, 150, 34, "뽑기 (D)", Draw, "ui_button", 14);
             UiKit.Label(ui, "DrawInfo", 176, 654, 380, 34, "일반 60% · 희귀 30% · 영웅 10%\n보낼 때 팀 인컴이 오릅니다 (20초마다 수입)", 11, TextAnchor.MiddleLeft, UiKit.InkSoft);
 
-            UiKit.Label(ui, "ShopTitle", 574, 510, 450, 18, "타워 (Q~O 단축키) — 고른 뒤 내 라인 빈 칸 클릭", 12, TextAnchor.MiddleLeft, UiKit.Ink);
+            UiKit.Label(ui, "ShopTitle", 574, 510, 450, 18, "타워 (Q~O) — 오른쪽 위 아이콘이 역할: 광역·원거리·감속·화상·대공·지원", 11, TextAnchor.MiddleLeft, UiKit.Ink);
             _shop = UiKit.Rect(ui, "Shop", 574, 530, 450, 66);
             float x = 0;
             foreach (var d in WaveCatalog.BasicTowers)
@@ -429,6 +429,7 @@ namespace LaneBattle.Game
                 var b = img.gameObject.AddComponent<Button>(); b.targetGraphic = img;
                 b.onClick.AddListener(() => { SelectedTowerId = id; Sfx.Play("click", 0.5f); RefreshShop(); });
                 UiKit.IconSprite(img.transform, "Icon", 5, 3, 36, 36, Art.Tower(d.Id, 0));
+                UiKit.Icon(img.transform, "Role", 31, 1, 14, TowerInfo.Role(d).icon);
                 UiKit.IconLabel(img.transform, "Cost", 6, 42, 40, 18, "icon_coin", d.Cost.ToString(), 11, UiKit.Ink);
                 _shopButtons.Add(b); _shopImages.Add(img);
                 x += 50;

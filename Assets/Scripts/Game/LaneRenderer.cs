@@ -45,7 +45,7 @@ namespace LaneBattle.Game
             public Tower Tower; public Transform Root, BodyRoot; public SpriteRenderer Body, Shadow, Star, Badge, BuildBar, BuildBack, Silence, Owner;
             public Sprite Idle0, Idle1, Attack; public float AttackLeft, Clock; public bool WasBuilding = true; public TextMesh OwnerLabel;
         }
-        sealed class Projectile { public Transform T; public Vector3 From, To; public float Age, Life, Arc; public bool Spin; }
+        sealed class Projectile { public Transform T; public Vector3 From, To; public float Age, Life, Arc; public bool Spin; public float SplashScale; }
         sealed class FxAnim { public SpriteRenderer R; public Sprite[] Frames; public float Age, FrameTime; public Vector3 Drift; public bool Fade; }
         sealed class PopupText { public TextMesh T; public float Age, Life; public Vector3 Start; public Color Color; }
 
@@ -111,7 +111,11 @@ namespace LaneBattle.Game
                 if (p.T == null) { _projectiles.RemoveAt(i); continue; }
                 p.T.position = pos;
                 if (p.Spin) p.T.Rotate(0, 0, 720f * dt);
-                if (t >= 1f) { UnityEngine.Object.Destroy(p.T.gameObject); _projectiles.RemoveAt(i); }
+                if (t >= 1f)
+                {
+                    if (p.SplashScale > 0) Fx(_fxBoom, p.To + new Vector3(0, 0, -0.1f), 0.05f, p.SplashScale);
+                    UnityEngine.Object.Destroy(p.T.gameObject); _projectiles.RemoveAt(i);
+                }
             }
             for (int i = _fx.Count - 1; i >= 0; i--)
             {
@@ -302,7 +306,8 @@ namespace LaneBattle.Game
             var dir = to - from;
             go.transform.rotation = Quaternion.Euler(0, 0, Mathf.Atan2(dir.y, dir.x) * Mathf.Rad2Deg);
             float dist = Mathf.Max(0.2f, dir.magnitude);
-            _projectiles.Add(new Projectile { T = go.transform, From = from, To = to, Life = dist / style.speed, Arc = style.arc, Spin = style.spin });
+            float splash = tv.Tower.Def.SplashRadius10 > 0 ? 0.5f + tv.Tower.Def.SplashRadius10 / 12f : 0f;
+            _projectiles.Add(new Projectile { T = go.transform, From = from, To = to, Life = dist / style.speed, Arc = style.arc, Spin = style.spin, SplashScale = splash });
             Sound(style.sound, 0.45f, style.pitch, 0.08f, 0.07f);
         }
 

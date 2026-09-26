@@ -160,5 +160,31 @@ namespace LaneBattle.Tests
                 Assert.AreEqual(0, s.CreepsAlive(), $"wave {w + 1}");
             }
         }
+
+        [Test]
+        public void ChainLightningJumpsToNearbyCreeps()
+        {
+            var s = Manual(21);
+            B(s, 14, 1, 0); // 번개 비행선: 연쇄 3회
+            Instant(s);
+            for (int i = 0; i < 4; i++) s.Send(WaveCatalog.Attacker(1));
+            int bestPerAttackTick = 0;
+            while (!s.IsOver && s.CreepsAlive() > 0)
+            {
+                s.Step();
+                int attacks = 0;
+                foreach (var e in s.Events) if (e.Type == SimEventType.Attack) attacks++;
+                bestPerAttackTick = System.Math.Max(bestPerAttackTick, attacks);
+            }
+            Assert.GreaterOrEqual(bestPerAttackTick, 2, "한 틱에 본 공격 + 연쇄 공격이 같이 난다");
+        }
+
+        [Test]
+        public void EveryBasicTowerHasADistinctRole()
+        {
+            var roles = new System.Collections.Generic.HashSet<string>();
+            foreach (var d in WaveCatalog.BasicTowers) roles.Add(TowerRoles.Of(d).label);
+            Assert.AreEqual(WaveCatalog.BasicTowers.Length, roles.Count, string.Join(", ", roles));
+        }
     }
 }
