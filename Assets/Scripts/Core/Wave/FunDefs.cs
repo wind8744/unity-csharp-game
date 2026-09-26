@@ -39,7 +39,7 @@ namespace LaneBattle.Core.Wave
             AugmentId.Interest => "수입 때마다 보유 골드의 10% 추가 (최대 +5)",
             AugmentId.Mercenaries => "보낼 때 팀 인컴 +1 추가",
             AugmentId.Legacy => "즉시 골드 +25",
-            AugmentId.Elite => "내 타워 강화 효과 +50% → +80%",
+            AugmentId.Elite => "내 ★3 타워 강화 효과 +50% → +80%",
             AugmentId.Venom => "내가 보낸 유닛 체력 +25%",
             AugmentId.AirNet => "내 궁수 타워 전원 대공 가능",
             AugmentId.Fortress => "기지 체력 +8",
@@ -50,7 +50,7 @@ namespace LaneBattle.Core.Wave
             AugmentId.Wiretap => "상대 팀의 핑이 보인다",
             AugmentId.Accountant => "상대 골드 잔액이 보인다",
             AugmentId.StarBlessing => "★2 이상 타워 공격 +10%",
-            AugmentId.Alchemy => "합치기·합성 결과가 즉시 강화 상태",
+            AugmentId.Alchemy => "타워가 ★3 이 되는 순간 공짜로 강화",
             _ => "뽑기 비용 -1, 손패 최대 +1",
         };
 
@@ -82,7 +82,7 @@ namespace LaneBattle.Core.Wave
             MissionId.Horde => "5초 안에 유닛 5개 이상 보내기 → 골드 +15",
             MissionId.IronWall => "120초 동안 누수 0 → 기지 체력 +4",
             MissionId.Miser => "골드 50 이상 보유한 채 수입 받기 → 팀 인컴 +4",
-            MissionId.Purebred => "같은 계열 타워 5개 → 그 계열 타워 전원 즉시 강화",
+            MissionId.Purebred => "같은 계열 타워 5개 → 골드 +20, 기지 +2",
             MissionId.BossHunter => "보스를 라인 1/3 지점 전에 처치 → 상대 기지 -4",
             MissionId.Blitz => "영웅 등급 2마리를 5초 안에 보내기 → 다음 보내기 3회 무료",
             MissionId.Frugal => "타워 3개 이하로 4:00 넘기기 → 증강 1개 추가 선택",

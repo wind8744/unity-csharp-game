@@ -58,7 +58,7 @@ namespace LaneBattle.Core.Wave
             // 2. 슬롯이 꽉 찼으면 강화
             if (slots.Count == 0)
                 foreach (var t in lane.Towers)
-                    if (t.Alive && !t.Upgraded && p.Gold >= t.Def.Cost + reserve) { output.Add(MatchCommand.Upgrade(team, player, t.Id)); return; }
+                    if (t.Alive && !t.Upgraded && t.Star >= 3 && p.Gold >= t.Def.Cost + reserve) { output.Add(MatchCommand.Upgrade(team, player, t.Id)); return; }
 
             // 2b. 합성은 공짜고 자리를 아끼니 짝이 생기면 바로 (2단계 둘 → 3단계 포함). 별 합치기는 타워가 8개 넘을 때.
             foreach (var t in lane.Towers)

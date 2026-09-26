@@ -358,7 +358,7 @@ namespace LaneBattle.Core.Wave
                                 if (lane.TribeCount[tr] >= 5)
                                 {
                                     done = true;
-                                    foreach (var tw in lane.Towers) if (tw.Alive && (int)tw.Def.Tribe == tr && !tw.Upgraded) lane.Upgrade(tw.Id);
+                                    p.Gold += 20; lane.AddBaseHp(2);
                                 }
                             break;
                         case MissionId.BossHunter: done = lane.LastBossKillDist >= 0 && lane.LastBossKillDist < lane.Map.LengthMilli / 3; if (done) Lanes[1 - t].AddBaseHp(-4); break;
@@ -500,7 +500,7 @@ namespace LaneBattle.Core.Wave
                 case CommandType.Upgrade:
                 {
                     var t = lane.TowerAt(c.A);
-                    if (t == null || t.Upgraded) { Reject(c); return; }
+                    if (t == null || t.Upgraded || t.Star < 3) { Reject(c); return; }   // 강화는 ★3 (더 못 올리는) 타워만
                     int upCost = UpgradeCostOf(c.Team, t);
                     if (p.Gold < upCost) { Reject(c); return; }
                     p.Gold -= upCost;
@@ -528,7 +528,7 @@ namespace LaneBattle.Core.Wave
                     if (p.Has(AugmentId.Elite)) r.UpgradePercent = 80;
                     if (p.Has(AugmentId.AirNet)) r.ForceAntiAir = true;
                     if (p.Has(AugmentId.StarBlessing)) r.StarBlessed = true;
-                    if (p.Has(AugmentId.Alchemy)) r.Upgraded = true;
+                    if (p.Has(AugmentId.Alchemy) && r.Star >= 3) r.Upgraded = true;   // 연금술: ★3 이 되는 순간 공짜 강화
                     if (r.Star > p.MaxStar) p.MaxStar = r.Star;
                     Emit(MatchEventType.Merged, c.Team, c.Player, r.Id, r.Star);
                     break;
@@ -536,13 +536,13 @@ namespace LaneBattle.Core.Wave
                 case CommandType.Fuse:
                 {
                     var a = lane.TowerAt(c.A); var b = lane.TowerAt(c.B);
-                    if (a == null || b == null || a.Owner != c.Player || b.Owner != c.Player || WaveCatalog.FindRecipe(a.Def.Id, b.Def.Id) == null) { Reject(c); return; }
+                    if (a == null || b == null || a.Owner != c.Player || b.Owner != c.Player || a.Star != b.Star || WaveCatalog.FindRecipe(a.Def.Id, b.Def.Id) == null) { Reject(c); return; }
                     var r = lane.Fuse(a.Id, b.Id);
                     if (r == null) { Reject(c); return; }
                     if (p.Has(AugmentId.Elite)) r.UpgradePercent = 80;
                     if (p.Has(AugmentId.AirNet)) r.ForceAntiAir = true;
                     if (p.Has(AugmentId.StarBlessing)) r.StarBlessed = true;
-                    if (p.Has(AugmentId.Alchemy)) r.Upgraded = true;
+                    if (p.Has(AugmentId.Alchemy) && r.Star >= 3) r.Upgraded = true;
                     p.FusedKinds.Add(r.Def.Id);
                     Emit(MatchEventType.Fused, c.Team, c.Player, r.Id, r.Def.Id);
                     break;
@@ -683,7 +683,7 @@ namespace LaneBattle.Core.Wave
             if (t == null) return ids;
             foreach (var o in Lanes[team].Towers)
             {
-                if (!o.Alive || o.Id == t.Id || o.Owner != t.Owner) continue;
+                if (!o.Alive || o.Id == t.Id || o.Owner != t.Owner || o.Star != t.Star) continue;
                 var def = WaveCatalog.FindRecipe(t.Def.Id, o.Def.Id);
                 if (def != null && def.Id == resultDefId) ids.Add(o.Id);
             }
@@ -699,7 +699,7 @@ namespace LaneBattle.Core.Wave
             var lane = Lanes[team];
             foreach (var o in lane.Towers)
             {
-                if (!o.Alive || o.Id == t.Id || o.Owner != t.Owner) continue;
+                if (!o.Alive || o.Id == t.Id || o.Owner != t.Owner || o.Star != t.Star) continue;   // 같은 별끼리만 합성
                 var def = WaveCatalog.FindRecipe(t.Def.Id, o.Def.Id);
                 if (def == null) continue;
                 bool dup = false;

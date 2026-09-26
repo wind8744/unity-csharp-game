@@ -248,7 +248,7 @@ namespace LaneBattle.Game
                         ShowMsg(((CommandType)ev.A) switch
                         {
                             CommandType.Build => "골드가 부족하거나 자리가 찼습니다",
-                            CommandType.Upgrade => "강화할 골드가 부족합니다",
+                            CommandType.Upgrade => "강화는 ★3 타워만, 골드가 있어야 합니다",
                             CommandType.Draw => $"뽑기 {Sim.Player(MyTeam, MyPlayer).DrawCost(Sim.Cfg)}골드가 없거나 손패가 가득 찼습니다",
                             CommandType.Send => Sim.ActiveEvent == EventId.Storm ? "폭풍 중에는 공중 유닛을 못 보냅니다" : "보낼 골드가 부족합니다",
                             CommandType.Merge => "같은 타워·같은 별 3개가 필요합니다",
@@ -739,7 +739,7 @@ namespace LaneBattle.Game
             if (t == null)
             {
                 _selectedTower = -1;
-                UiKit.Label(_actionPanel, "Hint", 0, 0, 450, 40, "타워 위에 커서를 올리고 U 강화 · E 판매 · C ★합치기 · R 합성 (클릭하면 버튼도 나옵니다).\n같은 타워 3개 = ★2 (공격 ×2.2), 합성 조합은 [합성표] 참고. 우클릭 = 바로 판매.", 11, TextAnchor.UpperLeft, UiKit.InkSoft);
+                UiKit.Label(_actionPanel, "Hint", 0, 0, 450, 40, "타워 위에 커서를 올리고 U 강화 · E 판매 · C ★합치기 · R 합성 (클릭하면 버튼도 나옵니다).\n같은 타워 3개 = ★2 (×2.2), 합성은 같은 별끼리(★2+★2 → ★2), 강화는 ★3만. [합성표] 참고.", 11, TextAnchor.UpperLeft, UiKit.InkSoft);
                 return;
             }
             var p = Sim.Player(MyTeam, MyPlayer);
@@ -747,8 +747,8 @@ namespace LaneBattle.Game
             UiKit.Label(_actionPanel, "Name", 0, 0, 450, 18, $"{t.Def.Name} {star}{(t.Upgraded ? " [강화됨]" : "")} — {TowerInfo.Describe(t.Def)}", 11, TextAnchor.MiddleLeft, UiKit.Ink);
             float x = 0;
             int upCost = Sim.UpgradeCostOf(MyTeam, t);
-            var up = UiKit.SpriteButton(_actionPanel, "Up", x, 22, 110, 30, t.Upgraded ? "강화 완료" : $"[U] 강화 {upCost}골드", Upgrade, "ui_button_green", 12);
-            up.interactable = !t.Upgraded && p.Gold >= upCost; x += 116;
+            var up = UiKit.SpriteButton(_actionPanel, "Up", x, 22, 110, 30, t.Upgraded ? "강화 완료" : t.Star < 3 ? "강화는 ★3만" : $"[U] 강화 {upCost}골드", Upgrade, "ui_button_green", t.Star < 3 && !t.Upgraded ? 10 : 12);
+            up.interactable = !t.Upgraded && t.Star >= 3 && p.Gold >= upCost; x += 116;
             UiKit.SpriteButton(_actionPanel, "Sell", x, 22, 100, 30, $"[E] 판매 +{MatchSim.SellValueOf(t)}", Sell, "ui_button_grey", 12); x += 106;
             var mateIds = Sim.MergeCandidates(MyTeam, t);
             bool canMerge = mateIds.Count >= 2 && t.Star < 3;
@@ -808,7 +808,7 @@ namespace LaneBattle.Game
         {
             var r = _recipePanel;
             UiKit.Label(r, "Title", 0, 10, 800, 26, "합성표 — 재료 두 타워를 내 진영에 지은 뒤, 한쪽을 클릭해 [합성]", 15, TextAnchor.MiddleCenter, UiKit.Ink);
-            UiKit.Label(r, "Sub", 0, 34, 800, 18, "같은 타워 3개 → ★2 (공격 ×2.2) · ★2 3개 → ★3 (×5). 2단계 둘을 다시 합치면 3단계. 어느 단계든 ★을 올릴 수 있습니다.", 10, TextAnchor.MiddleCenter, UiKit.InkSoft);
+            UiKit.Label(r, "Sub", 0, 34, 800, 18, "같은 타워 3개 → ★2 (×2.2) · ★2 3개 → ★3 (×5). 합성은 같은 별끼리 (★2+★2 → ★2 합성 타워). 2단계 둘 → 3단계. 강화(공속 +50%)는 ★3 만.", 10, TextAnchor.MiddleCenter, UiKit.InkSoft);
             int i = 0;
             foreach (var f in WaveCatalog.RecipeTowers)
             {
