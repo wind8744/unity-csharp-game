@@ -1,3 +1,4 @@
+using LaneBattle.Core;
 using System.Collections.Generic;
 using LaneBattle.Core.Wave;
 using NUnit.Framework;
@@ -149,6 +150,42 @@ namespace LaneBattle.Tests
             Assert.IsTrue(lane.Events.Exists(e => e.Type == SimEventType.Sold), "판매 이벤트");
             m.Step();
             Assert.IsFalse(lane.Events.Exists(e => e.Type == SimEventType.Sold), "다음 틱엔 비워진다");
+        }
+
+        [Test]
+        public void DrawOddsShiftTowardStrongUnitsOverTime()
+        {
+            var early = new Rng(7); var late = new Rng(7);
+            int legendsEarly = 0, legendsLate = 0, commonEarly = 0, commonLate = 0;
+            for (int i = 0; i < 400; i++)
+            {
+                var a = MatchSim.RollAttacker(early, 60); var b = MatchSim.RollAttacker(late, 420);
+                if (a.Rarity == Rarity.Legend) legendsEarly++; if (b.Rarity == Rarity.Legend) legendsLate++;
+                if (a.Rarity == Rarity.Common) commonEarly++; if (b.Rarity == Rarity.Common) commonLate++;
+            }
+            Assert.AreEqual(0, legendsEarly, "4:00 전엔 전설이 안 나온다");
+            Assert.Greater(legendsLate, 20);
+            Assert.Greater(commonEarly, commonLate);
+            Assert.AreEqual(4, System.Array.FindAll(WaveCatalog.Attackers, a => a.Rarity == Rarity.Legend).Length);
+        }
+
+        [Test]
+        public void SendUpgradesMakeSentUnitsTougherAndCostMore()
+        {
+            var m = new MatchSim(new MatchConfig { FunLayer = false }, 4);
+            var p = m.Player(0, 0);
+            Assert.AreEqual(25, MatchSim.UpgradeSendsCost(0)); Assert.AreEqual(40, MatchSim.UpgradeSendsCost(1)); Assert.AreEqual(-1, MatchSim.UpgradeSendsCost(MatchSim.MaxSendLevel));
+            p.Gold = 100; int gold = p.Gold;
+            m.Step(L(MatchCommand.UpgradeSends(0, 0), MatchCommand.UpgradeSends(0, 0)));
+            Assert.AreEqual(2, m.Teams[0].SendLevel);
+            Assert.AreEqual(gold - 25 - 40, p.Gold);
+            Assert.IsTrue(m.Events.Exists(e => e.Type == MatchEventType.SendsUpgraded));
+            p.Hand.Add(1);
+            m.Step(L(MatchCommand.Send(0, 0, 0)));
+            m.Step();
+            var wolf = m.EnemyLane(0).Creeps[0];
+            Assert.AreEqual(30 * (100 + 2 * MatchSim.SendLevelHpPercent) / 100, wolf.MaxHp, "레벨 2: 체력 +12%");
+            Assert.AreEqual(0, m.Teams[1].SendLevel, "상대 팀은 그대로");
         }
     }
 }

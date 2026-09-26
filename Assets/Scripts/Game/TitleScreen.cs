@@ -31,7 +31,7 @@ namespace LaneBattle.Game
             {
                 int id = 1 + rng.Next(WaveCatalog.Attackers.Length);
                 var d = WaveCatalog.Attacker(id);
-                float size = d.Rarity == Rarity.Hero ? 84 : 64;
+                float size = d.Rarity >= Rarity.Hero ? 84 : 64;
                 var rt = UiKit.Rect(_ui, "Parade" + i, -100 - i * 140, 560 - (d.Flying ? 60 : 0) + rng.Next(30), size, size);
                 var img = rt.gameObject.AddComponent<Image>(); img.sprite = Art.Creep(id, 0); img.preserveAspect = true; img.raycastTarget = false;
                 _parade.Add((rt, 40f + d.SpeedMilliPerSec / 40f, Art.Creep(id, 0), Art.Creep(id, 1), (float)rng.NextDouble() * 6f));
@@ -141,7 +141,9 @@ namespace LaneBattle.Game
                 "■ 방어  왼쪽 [내 진영]의 경로 옆 빈 칸에 타워를 짓는다. 타워는 지나가는 상대 유닛을 쏘기만 하고 맞지 않는다.\n" +
                 "   유닛은 구불구불한 경로를 따라 걷기만 하고, 살아서 끝까지 가면 기지 체력을 깎는다(누수). 굽이 안쪽 구석은 여러 구간을 동시에 본다.\n" +
                 "   기본 웨이브는 24초마다 양쪽에 똑같이 온다.\n\n" +
-                "■ 공격  [뽑기]로 유닛 카드를 뽑고(손패 8장, ×3 버튼으로 한 번에 셋), 카드를 눌러 상대 라인으로 보낸다. 보내면 팀 인컴이 오른다.\n" +
+                "■ 공격  [뽑기]로 유닛 카드를 뽑고(손패 8장, ×3 버튼으로 한 번에 셋), 카드를 눌러 상대 진영으로 보낸다. 보내면 팀 인컴이 오른다.\n" +
+                "   뽑기 등급 확률은 시간이 갈수록 희귀·영웅 쪽으로 옮겨 가고, 4:00부터 전설(맹수 왕·리치·고대 드래곤·타이탄)이 나온다.\n" +
+                "   [돌격 강화]는 팀 공유: 레벨마다 우리 팀이 보내는 유닛 체력 +6%, 속도 +2% (25, 40, 55… 골드, 최대 6).\n" +
                 "   상대가 보낸 유닛은 내 라인에 보이니, 오는 것을 보고 타워를 짓고 남는 골드로 보내자.\n\n" +
                 "■ 경제  15초마다 팀 인컴이 팀원에게 똑같이 나뉘어 들어온다. 처치 1골드. 판매는 80% 환불.\n\n" +
                 "■ 합성  같은 타워 3개 → ★2 (공격 ×2.2), ★2 3개 → ★3 (공격 ×5). 합성표의 두 타워 → 새 타워. 타워를 클릭해서 한다.\n" +

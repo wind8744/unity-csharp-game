@@ -5,7 +5,7 @@ namespace LaneBattle.Core.Wave
     public enum DefTribe { Forest, Fire, Machine }
     public enum DefJob { Warrior, Archer, Mage }
     public enum AtkTribe { Beast, Air, Giant, Dark }
-    public enum Rarity { Common, Rare, Hero }
+    public enum Rarity { Common, Rare, Hero, Legend }
 
     /// <summary>타워 정의. 숫자는 core-rules-v0.3.md 6절. 타워는 체력이 없다.</summary>
     public sealed class TowerDef
@@ -74,6 +74,14 @@ namespace LaneBattle.Core.Wave
         public static readonly TowerDef[] BasicTowers = System.Array.FindAll(Towers, t => t.Tier == 1);
         public static readonly TowerDef[] FusedTowers = System.Array.FindAll(Towers, t => t.Tier == 2);
 
+        /// <summary>뽑기 등급 확률 (%): 시간이 갈수록 희귀·영웅·전설로 이동. (일반, 희귀, 영웅, 전설)</summary>
+        public static (int common, int rare, int hero, int legend) DrawOdds(int seconds) =>
+            seconds < 120 ? (70, 25, 5, 0) :
+            seconds < 240 ? (55, 30, 15, 0) :
+            seconds < 360 ? (42, 32, 20, 6) :
+                            (32, 32, 24, 12);
+        public const int LegendUnlockSeconds = 240;
+
         /// <summary>두 타워 정의로 만들 수 있는 합성 타워. 순서 무관. 없으면 null.</summary>
         public static TowerDef FindRecipe(int defA, int defB)
         {
@@ -99,6 +107,11 @@ namespace LaneBattle.Core.Wave
             new AttackerDef { Id = 9,  Name = "드래곤",   Rarity = Rarity.Hero,   Tribe = AtkTribe.Air,   SendCost = 14, Hp = 320, SpeedMilliPerSec = 1300, Leak = 3, Income = 4, Flying = true, SpawnSilenceRange10 = 20, SpawnSilenceTenths = 15 },
             new AttackerDef { Id = 10, Name = "거대 골렘", Rarity = Rarity.Hero,  Tribe = AtkTribe.Giant, SendCost = 14, Hp = 450, SpeedMilliPerSec = 600,  Leak = 4, Income = 3, SlowImmune = true },
             new AttackerDef { Id = 11, Name = "흑마법사", Rarity = Rarity.Hero,   Tribe = AtkTribe.Dark,  SendCost = 15, Hp = 150, SpeedMilliPerSec = 1000, Leak = 2, Income = 3, PeriodicSilenceEverySec = 3, PeriodicSilenceTenths = 20 },
+            // ── 전설 (4:00 부터 뽑기에 나온다, 문서 v0.4 13절): 비싸고 단단하고 누수·인컴이 크다. 계열마다 하나.
+            new AttackerDef { Id = 12, Name = "맹수 왕",   Rarity = Rarity.Legend, Tribe = AtkTribe.Beast, SendCost = 20, Hp = 340, SpeedMilliPerSec = 1800, Leak = 4, Income = 4, StealthSeconds = 2 },
+            new AttackerDef { Id = 13, Name = "리치",     Rarity = Rarity.Legend, Tribe = AtkTribe.Dark,  SendCost = 22, Hp = 300, SpeedMilliPerSec = 1000, Leak = 4, Income = 5, HealPerSec = 5, HealRange10 = 25, PeriodicSilenceEverySec = 4, PeriodicSilenceTenths = 20 },
+            new AttackerDef { Id = 14, Name = "고대 드래곤", Rarity = Rarity.Legend, Tribe = AtkTribe.Air, SendCost = 26, Hp = 560, SpeedMilliPerSec = 1200, Leak = 5, Income = 6, Flying = true, SpawnSilenceRange10 = 30, SpawnSilenceTenths = 20 },
+            new AttackerDef { Id = 15, Name = "타이탄",    Rarity = Rarity.Legend, Tribe = AtkTribe.Giant, SendCost = 24, Hp = 760, SpeedMilliPerSec = 700, Leak = 6, Income = 5, SlowImmune = true },
         };
 
         static readonly Dictionary<int, TowerDef> _t = Index(Towers, x => x.Id);
@@ -134,7 +147,7 @@ namespace LaneBattle.Core.Wave
             new[] { (11, 1, 3) },                        // 보스: 흑마법사 ×3
             new[] { (5, 4, 1), (9, 1, 1) },
             new[] { (4, 6, 1), (6, 4, 1), (7, 3, 1) },
-            new[] { (9, 2, 1), (1, 10, 1) },
+            new[] { (15, 1, 1), (1, 10, 1) },            // 마지막: 타이탄 + 늑대 떼
         };
 
         public static bool IsBossWave(int index) => index == 3 || index == 7 || index == 11 || index == 15;

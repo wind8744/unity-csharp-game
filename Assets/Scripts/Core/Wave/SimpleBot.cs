@@ -73,6 +73,13 @@ namespace LaneBattle.Core.Wave
                 }
             }
 
+            // 2c. 돌격 강화: 분당 1레벨 정도, 여유 골드가 있을 때
+            {
+                int lv = sim.Teams[team].SendLevel;
+                int cost = MatchSim.UpgradeSendsCost(lv);
+                if (sim.Cfg.SendUpgradesEnabled && cost > 0 && lv < seconds / 90 && p.Gold >= cost + reserve && Aggression >= 50) { output.Add(MatchCommand.UpgradeSends(team, player)); return; }
+            }
+
             // 3. 보내기: 상대 대공이 없으면 공중 우선
             int enemyAntiAir = 0;
             foreach (var t in enemyLane.Towers) if (t.Alive && t.Def.AntiAir) enemyAntiAir++;
