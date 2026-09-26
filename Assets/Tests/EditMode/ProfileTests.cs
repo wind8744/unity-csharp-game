@@ -71,7 +71,7 @@ namespace LaneBattle.Tests
             var m = new MatchSim(new MatchConfig { FunLayer = false }, 2);
             var p = m.Player(0, 0);
             p.Augments.Add(AugmentId.Veteran); p.Augments.Add(AugmentId.Alchemy);
-            Assert.AreEqual(4, p.DrawCost(m.Cfg)); Assert.AreEqual(7, p.HandMax(m.Cfg));
+            Assert.AreEqual(m.Cfg.DrawCost - 1, p.DrawCost(m.Cfg)); Assert.AreEqual(m.Cfg.HandMax + 1, p.HandMax(m.Cfg));
             m.Step(new List<MatchCommand> { MatchCommand.Build(0, 0, 1, 0, 0), MatchCommand.Build(0, 0, 4, 3, 0) });
             var lane = m.OwnLane(0);
             m.Step(new List<MatchCommand> { MatchCommand.Fuse(0, 0, lane.TowerAtCell(0, 0).Id, lane.TowerAtCell(3, 0).Id) });

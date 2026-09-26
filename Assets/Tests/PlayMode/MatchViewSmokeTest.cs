@@ -21,8 +21,9 @@ namespace LaneBattle.PlayTests
             view.FastForward(90f);
             yield return null;
             Assert.Greater(view.Sim.Tick, 1700);
-            view.FastForward(300f);
+            view.FastForward(120f);   // 8분 판이라 너무 오래 돌리면 기지 파괴로 끝날 수 있다
             yield return null;
+            Assert.IsFalse(view.Sim.IsOver);
             int alive0 = 0, alive1 = 0;
             foreach (var t in view.Sim.OwnLane(0).Towers) if (t.Alive) alive0++;
             foreach (var t in view.Sim.OwnLane(1).Towers) if (t.Alive) alive1++;

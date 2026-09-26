@@ -53,7 +53,7 @@ namespace LaneBattle.Game
             var profile = ProfileStore.Current;
             UiKit.SpriteButton(_ui, "Codex", 860, 322, 150, 40, $"해금 도감 {profile.Unlocks.Count}/{Profile.Catalog.Length}", ShowCodex, "ui_button", 13);
             BuildOptions(profile);
-            UiKit.OutlinedLabel(_ui, "Ver", 0, 690, 1270, 20, $"쪼꼬미 공성전 v0.8 · 전적 {profile.Wins}승 {profile.Matches - profile.Wins}패" + (profile.Title.Length > 0 ? $" · 칭호 [{profile.Title}]" : ""), 11, TextAnchor.MiddleRight, new Color(1, 1, 1, 0.85f));
+            UiKit.OutlinedLabel(_ui, "Ver", 0, 690, 1270, 20, $"쪼꼬미 공성전 v0.9 · 전적 {profile.Wins}승 {profile.Matches - profile.Wins}패" + (profile.Title.Length > 0 ? $" · 칭호 [{profile.Title}]" : ""), 11, TextAnchor.MiddleRight, new Color(1, 1, 1, 0.85f));
             _popup = UiKit.SpritePanel(_ui, "Popup", 190, 60, 900, 600, "ui_panel").transform;
             _popup.gameObject.SetActive(false);
             Sfx.Music("bgm_title");
@@ -137,19 +137,19 @@ namespace LaneBattle.Game
         {
             OpenPopup("게임 방법");
             string text =
-                "■ 목표  10분 안에 상대 기지 체력을 0으로 만들거나, 끝났을 때 기지 체력이 더 많으면 승리.\n\n" +
+                "■ 목표  8분 안에 상대 기지 체력을 0으로 만들거나, 끝났을 때 기지 체력이 더 많으면 승리.\n\n" +
                 "■ 방어  왼쪽 [내 진영]의 경로 옆 빈 칸에 타워를 짓는다. 타워는 지나가는 상대 유닛을 쏘기만 하고 맞지 않는다.\n" +
                 "   유닛은 구불구불한 경로를 따라 걷기만 하고, 살아서 끝까지 가면 기지 체력을 깎는다(누수). 굽이 안쪽 구석은 여러 구간을 동시에 본다.\n" +
-                "   기본 웨이브는 30초마다 양쪽에 똑같이 온다.\n\n" +
-                "■ 공격  [뽑기]로 유닛 카드를 뽑고(손패 6장), 카드를 눌러 상대 라인으로 보낸다. 보내면 팀 인컴이 오른다.\n" +
+                "   기본 웨이브는 24초마다 양쪽에 똑같이 온다.\n\n" +
+                "■ 공격  [뽑기]로 유닛 카드를 뽑고(손패 8장, ×3 버튼으로 한 번에 셋), 카드를 눌러 상대 라인으로 보낸다. 보내면 팀 인컴이 오른다.\n" +
                 "   상대가 보낸 유닛은 내 라인에 보이니, 오는 것을 보고 타워를 짓고 남는 골드로 보내자.\n\n" +
-                "■ 경제  20초마다 팀 인컴이 팀원에게 똑같이 나뉘어 들어온다. 처치 1골드. 판매는 80% 환불.\n\n" +
+                "■ 경제  15초마다 팀 인컴이 팀원에게 똑같이 나뉘어 들어온다. 처치 1골드. 판매는 80% 환불.\n\n" +
                 "■ 합성  같은 타워 3개 → ★2 (공격 ×2.2), ★2 3개 → ★3 (공격 ×5). 합성표의 두 타워 → 새 타워. 타워를 클릭해서 한다.\n" +
                 "   시너지: 같은 계열(숲·불·기계) 3/5개, 같은 직업 타워를 옆에 붙이기. 5초 안에 같은 유닛 3마리를 보내면 무리 시너지.\n\n" +
-                "■ 재미 요소  3:00·6:00에 증강 선택(10초 정지). 4:30·7:30에 이벤트 시간대(30초 전 예고). 비밀 미션은 시작 때 하나.\n\n" +
+                "■ 재미 요소  2:30·5:00에 증강 선택(10초 정지). 3:30·6:00에 이벤트 시간대(30초 전 예고). 비밀 미션은 시작 때 하나.\n\n" +
                 "■ 온라인  한 명이 [방 만들기], 나머지는 그 주소로 [참가]. 호스트가 인원과 팀을 정하고 시작. 빈 자리는 봇.\n\n" +
                 "■ 조작  타워 상점 클릭 또는 Q~O, 빈 칸 클릭 = 짓기, 타워 클릭 = 강화/판매/합치기/합성, 우클릭 = 판매,\n" +
-                "   D = 뽑기, 스페이스 = 정지, 1/2/3 = 배속, ESC = 메뉴.";
+                "   D = 뽑기, F = 3장 뽑기, 스페이스 = 정지, 1/2/3 = 배속, ESC = 메뉴.";
             UiKit.Label(_popup, "Body", 40, 56, 820, 490, text, 13, TextAnchor.UpperLeft, UiKit.Ink);
         }
 
