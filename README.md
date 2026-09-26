@@ -1,6 +1,6 @@
 # 쪼꼬미 공성전 (Chokkomi Siege)
 
-귀여운 타워로 막고, 뽑은 유닛을 보내 상대 성을 무너뜨리는 **실시간 공격 디펜스** (스타크래프트 유즈맵 "공격 디펜스" 참고). 1v1 / 2v2 / 3v3 (팀원은 봇), 타워 합성·별 합치기, 증강·이벤트·비밀 미션·시너지. Unity 6, C#.
+귀여운 타워로 막고, 뽑은 유닛을 보내 상대 성을 무너뜨리는 **실시간 공격 디펜스** (스타크래프트 유즈맵 "공격 디펜스" 참고). 1v1 / 2v2 / 3v3 (혼자면 봇 팀원, 온라인이면 친구와 LAN/IP 직결 락스텝), 타워 합성·별 합치기, 증강·이벤트·비밀 미션·시너지. Unity 6, C#.
 
 규칙: [Docs/design/core-rules-v0.4.md](Docs/design/core-rules-v0.4.md) (기본은 [v0.3](Docs/design/core-rules-v0.3.md)).
 
@@ -27,9 +27,13 @@ Assets/
     Wave/MatchSim.cs           한 판: 두 라인, 골드·인컴·손패, 증강·이벤트·미션, 명령 처리
     Wave/FunDefs.cs            증강·이벤트·미션 정의
     Wave/SimpleBot.cs          봇 (팀원·상대)
+    Net/Wire.cs                온라인 메시지 직렬화
+    Net/Transport.cs           TCP 직결 전송 (+ 테스트용 루프백)
+    Net/NetSession.cs          로비 + 호스트 중계 락스텝 (턴마다 명령 교환, 해시 검증)
   Scripts/Game/                Unity 표현층
     GameFlow.cs                타이틀 ↔ 경기
-    TitleScreen.cs             타이틀 (모드 선택, 게임 방법, 합성표, 소리)
+    TitleScreen.cs             타이틀 (모드 선택, 온라인, 게임 방법, 합성표, 소리)
+    OnlineLobby.cs             온라인 로비 (방 만들기 / 참가, 팀 배치, 채팅)
     MatchView.cs               경기 HUD·입력·행동 패널·증강·결과
     LaneRenderer.cs            라인 그리기: 스프라이트 애니메이션, 투사체, 이펙트, 데미지 숫자, 효과음
     Art.cs / Sfx.cs / UiKit.cs 그림·소리 로더, 코드 UI 도우미
@@ -57,7 +61,14 @@ python3 Tools/art/gen_sprites.py && python3 Tools/audio/gen_audio.py
 /Applications/Unity/Hub/Editor/6000.6.3f1/Unity.app/Contents/MacOS/Unity -batchmode -nographics -projectPath . -executeMethod LaneBattle.Editor.PlayerBuilder.BuildMac -quit -logFile /tmp/build.log
 ```
 
-빌드된 앱은 `-mode 1|2|3` (타이틀 건너뛰기), `-bots` (사람 자리도 봇), `-matchtime 초`, `-screenshot 경로` 옵션으로 헤드리스 확인이 된다.
+빌드된 앱은 `-mode 1|2|3` (타이틀 건너뛰기), `-bots` (사람 자리도 봇), `-matchtime 초`, `-screenshot 경로`, `-online -host` (로비에서 바로 방 만들기) 옵션으로 헤드리스 확인이 된다.
+
+## 온라인으로 같이 하기
+
+1. 한 명이 타이틀 → **온라인 대전** → 이름 입력 → **방 만들기**. 화면에 뜨는 주소(예: 192.168.0.12)를 친구에게 알려준다.
+2. 친구는 온라인 대전 → 주소 입력 → **참가**.
+3. 호스트가 인원(1v1·2v2·3v3)과 팀 배치를 정하고 **시작**. 빈 자리는 봇이 맡는다.
+4. 같은 와이파이가 아니면 호스트 공유기에서 TCP 27015 포트를 열어야 한다. macOS 방화벽이 물어보면 허용.
 
 ## 컨벤션
 
