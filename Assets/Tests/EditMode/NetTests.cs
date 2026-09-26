@@ -90,8 +90,8 @@ namespace LaneBattle.Tests
             client.LocalCommands.Add(MatchCommand.Build(0, 0, 1, 0, 0)); // 팀 0 이라고 속여도
             client.Poll(); host.Poll();
             host.TryStep();
-            Assert.IsNotNull(hs.OwnLane(1).TowerAt(0, 0), "호스트가 클라 슬롯(팀 1)으로 고쳐 적용");
-            Assert.IsNull(hs.OwnLane(0).TowerAt(0, 0));
+            Assert.IsNotNull(hs.OwnLane(1).TowerAtCell(0, 0), "호스트가 클라 슬롯(팀 1)으로 고쳐 적용");
+            Assert.IsNull(hs.OwnLane(0).TowerAtCell(0, 0));
         }
 
         [Test]

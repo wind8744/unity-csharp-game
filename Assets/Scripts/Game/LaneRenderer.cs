@@ -38,7 +38,7 @@ namespace LaneBattle.Game
         sealed class CreepVisual
         {
             public Creep Creep; public Transform Root; public SpriteRenderer Body, Shadow, HpBar, HpBack, Status, Status2; public Vector2 Prev, Curr;
-            public float Jitter, Flash, WalkClock; public int Frame; public Sprite[] Frames; public float Size;
+            public float Jitter, Flash, WalkClock; public int Frame; public Sprite[] Frames; public float Size; public Vector2 Facing = Vector2.right;
         }
         sealed class TowerVisual
         {
@@ -93,7 +93,7 @@ namespace LaneBattle.Game
             }
         }
 
-        public Vector3 SlotCenter(int col, int row, float z = 0) => W(Sim.Cfg.GridStartX + row + 0.5f, col + 0.5f, z);
+        public Vector3 SlotCenter(int x, int y, float z = 0) => W(x + 0.5f, y + 0.5f, z);
         public Vector3 TowerWorld(Tower t) => W(t.X / 1000f, t.Y / 1000f);
 
         // ─────────────────────────── 매 프레임 ───────────────────────────
@@ -162,17 +162,17 @@ namespace LaneBattle.Game
                     float r = Sim.EffectiveRange(sel) / 1000f;
                     _rangeRing.transform.position = TowerWorld(sel) + new Vector3(0, 0, 0.3f);
                     _rangeRing.transform.localScale = Vector3.one * r * 2f;
-                    _selectSlot.transform.position = SlotCenter(sel.Col, sel.Row, 0.4f);
+                    _selectSlot.transform.position = SlotCenter(sel.Cx, sel.Cy, 0.4f);
                 }
             }
         }
 
         /// <summary>월드 좌표가 이 라인의 타워 슬롯 위면 (열, 줄)을 돌려준다.</summary>
-        public bool WorldToSlot(Vector3 world, out int col, out int row)
+        public bool WorldToSlot(Vector3 world, out int x, out int y)
         {
-            row = Mathf.FloorToInt(world.x - Origin.x) - Sim.Cfg.GridStartX;
-            col = Mathf.FloorToInt(world.y - Origin.y);
-            return row >= 0 && row < Sim.Cfg.Rows && col >= 0 && col < Sim.Cfg.Width;
+            x = Mathf.FloorToInt(world.x - Origin.x);
+            y = Mathf.FloorToInt(world.y - Origin.y);
+            return Sim.Map.IsSlot(x, y);
         }
 
         Vector3 W(float x, float y, float z = 0) => new Vector3(Origin.x + x, Origin.y + y, z);
@@ -375,7 +375,11 @@ namespace LaneBattle.Game
             var c = v.Creep;
             var p = Vector2.Lerp(v.Prev, v.Curr, t);
             float bob = c.Def.Flying ? Mathf.Sin(_time * 5f + c.Id) * 0.08f + 0.25f : 0f;
-            v.Root.position = W(p.x, p.y + v.Jitter, 0);
+            var dir = v.Curr - v.Prev;
+            if (dir.sqrMagnitude > 1e-6f) v.Facing = dir.normalized;
+            var perp = new Vector2(-v.Facing.y, v.Facing.x) * v.Jitter;
+            v.Root.position = W(p.x + perp.x, p.y + perp.y, 0);
+            v.Body.flipX = v.Facing.x < -0.01f;
             int frame = Mathf.FloorToInt(v.WalkClock / (c.Def.Flying ? 0.12f : 0.18f)) % 2;
             v.Body.sprite = v.Frames[frame];
             float squash = v.Flash > 0 ? 0.85f : 1f;
@@ -388,7 +392,7 @@ namespace LaneBattle.Game
             v.HpBar.transform.localPosition = new Vector3(-barW * (1 - ratio) / 2, v.HpBack.transform.localPosition.y, 0);
             v.HpBar.color = ratio > 0.5f ? UiKit.Green : ratio > 0.25f ? UiKit.Gold : UiKit.Red;
             var col = Color.white;
-            bool hidden = Sim.Mod.FogHalfLane && c.FromEnemy && IsMine && c.X < Sim.Cfg.Length * 500;
+            bool hidden = Sim.Mod.FogHalfLane && c.FromEnemy && IsMine && c.Dist < Sim.Map.LengthMilli / 2;
             if (hidden) col.a = 0f;
             else if (c.Stealthed) col.a = 0.35f;
             if (v.Flash > 0) col = new Color(1f, 0.55f, 0.55f, col.a);
@@ -479,41 +483,44 @@ namespace LaneBattle.Game
 
         void BuildGround(LaneConfig cfg, string title)
         {
+            var map = cfg.Map;
             var grass0 = Art.Get("tile_grass_0"); var grass1 = Art.Get("tile_grass_1"); var path = Art.Get("tile_path"); var slot = Art.Get("tile_slot");
             float tile = 0.5f; // 32px @ PPU 64
             var rng = new System.Random(IsMine ? 1 : 2);
             var groundRoot = new GameObject("Ground").transform; groundRoot.SetParent(_root, false);
-            // 잔디: 라인 둘레 여백 포함
-            for (float x = -1.5f; x < cfg.Length + 2.5f; x += tile)
-                for (float y = -1.0f; y < cfg.Width + 1.5f; y += tile)
+            // 잔디 (맵 둘레 여백 포함) + 경로 타일
+            for (float x = -1.0f; x < map.W + 1.0f; x += tile)
+                for (float y = -1.0f; y < map.H + 1.5f; y += tile)
                 {
-                    bool onPath = x >= 0f && x < cfg.Length + 0.5f && y >= 0f && y < cfg.Width;
+                    int cx = Mathf.FloorToInt(x), cy = Mathf.FloorToInt(y);
+                    bool onPath = map.InBounds(cx, cy) && map.IsPath[cx, cy];
                     var sr = Sprite(groundRoot, "Tile", onPath ? path : (rng.Next(5) == 0 ? grass1 : grass0), Color.white, 0);
                     sr.transform.position = W(x + tile / 2, y + tile / 2, 2f);
-                    if (onPath) sr.color = new Color(1f, 1f, 1f, 1f);
                 }
-            for (int c = 0; c < cfg.Width; c++)
-                for (int r = 0; r < cfg.Rows; r++)
+            for (int x = 0; x < map.W; x++)
+                for (int y = 0; y < map.H; y++)
                 {
-                    var s = Sprite(groundRoot, "Slot", slot, IsMine ? Color.white : new Color(0.85f, 0.85f, 0.9f), 1);
-                    s.transform.position = SlotCenter(c, r, 1.5f);
-                    s.transform.localScale = Vector3.one * 1.9f; // 32px → 0.95칸
-                    _slots[(c, r)] = s;
+                    if (!map.IsSlot(x, y)) continue;
+                    var s = Sprite(groundRoot, "Slot", slot, IsMine ? new Color(1f, 1f, 1f, 0.85f) : new Color(0.85f, 0.85f, 0.9f, 0.8f), 1);
+                    s.transform.position = SlotCenter(x, y, 1.5f);
+                    s.transform.localScale = Vector3.one * 1.86f; // 32px → 0.93칸
+                    _slots[(x, y)] = s;
                 }
             _hoverSlot = Sprite(groundRoot, "Hover", Art.Get("tile_slot_hover"), Color.white, 2); _hoverSlot.transform.localScale = Vector3.one * 1.9f; _hoverSlot.enabled = false;
             _selectSlot = Sprite(groundRoot, "Select", Art.Get("tile_slot_hover"), new Color(1f, 0.9f, 0.5f), 2); _selectSlot.transform.localScale = Vector3.one * 1.9f; _selectSlot.enabled = false;
             _rangeRing = Sprite(groundRoot, "Range", Art.Ring, new Color(1f, 0.95f, 0.6f, 0.9f), 3); _rangeRing.enabled = false;
             // 성문 (출발), 기지 (도착)
+            var st = map.Start; var en = map.End;
             _gate = Sprite(groundRoot, "Gate", Art.Get("gate"), Color.white, 2);
-            _gate.transform.position = W(-0.1f, cfg.Width / 2f, 1f);
-            _gate.transform.localScale = Vector3.one * Mathf.Max(1f, cfg.Width / 4f);
-            _baseRoot = new GameObject("BaseRoot").transform; _baseRoot.SetParent(_root, false); _baseAnchor = W(cfg.Length + 0.6f, cfg.Width / 2f, 1f); _baseRoot.position = _baseAnchor;
+            _gate.transform.position = W(st.x + 0.5f, st.y + 0.6f, 1f);
+            _baseRoot = new GameObject("BaseRoot").transform; _baseRoot.SetParent(_root, false);
+            _baseAnchor = W(en.x + 0.5f, en.y + 0.55f, 1f); _baseRoot.position = _baseAnchor;
             _base = Sprite(_baseRoot, "Base", Art.Get("base"), Color.white, 2);
-            _base.transform.localScale = Vector3.one * Mathf.Max(1.1f, cfg.Width / 3.6f);
+            _base.transform.localScale = Vector3.one * 1.15f;
             var flag = Sprite(_baseRoot, "Flag", Art.Get(IsMine ? "flag_blue" : "flag_red"), Color.white, 3);
-            flag.transform.localPosition = new Vector3(0.05f, 0.7f * Mathf.Max(1.1f, cfg.Width / 3.6f), -0.1f);
+            flag.transform.localPosition = new Vector3(0.05f, 0.8f, -0.1f);
             // 제목
-            var l = TextLabel(_root, title, 0.075f, W(0.1f, cfg.Width + 0.45f), TextAnchor.MiddleLeft, 5);
+            var l = TextLabel(_root, title, 0.075f, W(0.1f, map.H + 0.45f), TextAnchor.MiddleLeft, 5);
             l.anchor = TextAnchor.MiddleLeft; l.alignment = TextAlignment.Left; l.color = IsMine ? new Color(0.85f, 0.95f, 1f) : new Color(1f, 0.85f, 0.85f);
         }
 

@@ -14,16 +14,14 @@ namespace LaneBattle.Core.Wave
         public int DrawCost = 5;
         public int HandMax = 6;
         public int KillGold = 1;
-        public int TowerDamagePercent = 140;   // 밸런스 전역 배율 (봇 대전 스윕으로 결정, 문서 v0.4 8절)
+        public int TowerDamagePercent = 115;   // 밸런스 전역 배율 (봇 대전 스윕으로 결정, 문서 v0.4 9절)
         public int SendCostPercent = 100;      // 보내기 비용 배율
         public int SendIncomePercent = 50;     // 보낼 때 오르는 인컴 배율 (정수 나눗셈, 최소 1)
         public int BaseHpOverride = 0;          // 0 이면 인원수 기본값
-        public int LaneWidthOverride = 0;       // 0 이면 인원수 기본값
         public int WaveScaleOverride = 0;       // 0 이면 인원수 기본값
         public int LateWaveStepPercent = 8;     // 10번째 웨이브부터 웨이브마다 기본 웨이브 체력 +8%
-        public int LaneLength = 30;             // 라인 길이 (칸). 타워 격자는 GridStartX 부터 3줄
-        public int GridStartX = 10;
         public int CreepSpeedPercent = 50;      // 유닛 속도 배율
+        public MapDef MapOverride;              // null 이면 인원수 기본 맵 (MapCatalog)
         public int[] AugmentSeconds = { 180, 360 };   // 증강 선택 시각
         public int AugmentPauseSeconds = 10;
         public int[] EventSeconds = { 270, 450 };     // 이벤트 시간대 시작
@@ -31,16 +29,16 @@ namespace LaneBattle.Core.Wave
         public int EventWarnSeconds = 30;
         public bool FunLayer = true;                  // 증강·이벤트·미션·시너지 켜기
 
-        // 인원수별 기본값 (봇 스윕으로 결정, 문서 3-2절): 1v1 폭4·기지40·웨이브100%, 2v2 폭5·기지120·130%, 3v3 폭6·기지300·130%
-        public int LaneWidth => LaneWidthOverride > 0 ? LaneWidthOverride : PlayersPerTeam switch { 1 => 4, 2 => 5, _ => 6 };
-        public int BaseHp => BaseHpOverride > 0 ? BaseHpOverride : PlayersPerTeam switch { 1 => 40, 2 => 120, _ => 360 };
+        // 인원수별 기본값 (봇 스윕으로 결정, 문서 v0.4 3·8절): 기지 40/120/360, 웨이브 100/130/130%
+        public MapDef Map => MapOverride ?? MapCatalog.ForPlayers(PlayersPerTeam);
+        public int BaseHp => BaseHpOverride > 0 ? BaseHpOverride : PlayersPerTeam switch { 1 => 40, 2 => 80, _ => 160 };
         public int WaveScalePercent => WaveScaleOverride > 0 ? WaveScaleOverride : PlayersPerTeam switch { 1 => 100, _ => 130 };
 
         public LaneConfig MakeLaneConfig() => new LaneConfig
         {
-            Width = LaneWidth, BaseHp = BaseHp, WaveScalePercent = WaveScalePercent,
+            Map = Map, BaseHp = BaseHp, WaveScalePercent = WaveScalePercent,
             TicksPerSecond = TicksPerSecond, MatchSeconds = MatchSeconds, TowerDamagePercent = TowerDamagePercent,
-            LateWaveStepPercent = LateWaveStepPercent, Length = LaneLength, GridStartX = GridStartX, CreepSpeedPercent = CreepSpeedPercent,
+            LateWaveStepPercent = LateWaveStepPercent, CreepSpeedPercent = CreepSpeedPercent,
         };
     }
 
@@ -313,7 +311,7 @@ namespace LaneBattle.Core.Wave
                                     foreach (var tw in lane.Towers) if (tw.Alive && (int)tw.Def.Tribe == tr && !tw.Upgraded) lane.Upgrade(tw.Id);
                                 }
                             break;
-                        case MissionId.BossHunter: done = lane.LastBossKillX >= 0 && lane.LastBossKillX < lane.Cfg.Length * 1000 / 3; if (done) Lanes[1 - t].AddBaseHp(-4); break;
+                        case MissionId.BossHunter: done = lane.LastBossKillDist >= 0 && lane.LastBossKillDist < lane.Map.LengthMilli / 3; if (done) Lanes[1 - t].AddBaseHp(-4); break;
                         case MissionId.Blitz: done = CountWithin(p.RecentHeroSendTicks, gtick, 5) >= 2; if (done) p.FreeSends += 3; break;
                         case MissionId.Frugal: done = gtick >= 240 * Cfg.TicksPerSecond && AliveTowers(lane) <= 3; if (done) OfferAugments(p); break;
                         case MissionId.Massacre: done = CountWithin(Teams[t].KillTicks, gtick, 30) >= 20; if (done) { p.Gold += 10; lane.AddBaseHp(1); } break;
@@ -387,7 +385,7 @@ namespace LaneBattle.Core.Wave
                 case CommandType.Build:
                 {
                     var def = WaveCatalog.Tower(c.A);
-                    if (p.Gold < def.Cost || lane.TowerAt(c.B, c.C) != null) { Reject(c); return; }
+                    if (p.Gold < def.Cost || !lane.CanBuildAt(c.B, c.C)) { Reject(c); return; }
                     var t = lane.Build(def, c.B, c.C, c.Player);
                     if (t == null) { Reject(c); return; }
                     p.Gold -= def.Cost;

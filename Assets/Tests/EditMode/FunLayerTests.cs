@@ -13,11 +13,11 @@ namespace LaneBattle.Tests
         public void ForestThreeExtendsRangeAndArcherRowAddsMore()
         {
             var lane = new LaneSim(new LaneConfig { AutoWaves = false }, 1);
-            var a = lane.Build(WaveCatalog.Tower(1), 0, 0); lane.Build(WaveCatalog.Tower(1), 1, 0); lane.Build(WaveCatalog.Tower(2), 2, 1);
+            var a = lane.Build(WaveCatalog.Tower(1), 0, 0); lane.Build(WaveCatalog.Tower(1), 1, 0); lane.Build(WaveCatalog.Tower(2), 2, 0);
             foreach (var t in lane.Towers) t.BuildLeft = 0;
             lane.Step();
             Assert.IsTrue(lane.Forest3);
-            Assert.IsTrue(lane.RowArcher2[0]);
+            Assert.IsTrue(a.JobAdj);
             Assert.AreEqual((30 + 5 + 10) * 100, lane.EffectiveRange(a));
         }
 

@@ -79,7 +79,7 @@ namespace LaneBattle.Tests
         {
             var m = New(5);
             var p = m.Player(0, 0);
-            for (int c = 0; c < 4; c++) m.OwnLane(0).Build(WaveCatalog.Tower(7), c, 1);
+            foreach (var (x, y) in new[] { (3, 3), (4, 3), (5, 3), (6, 3) }) Assert.IsNotNull(m.OwnLane(0).Build(WaveCatalog.Tower(7), x, y));
             foreach (var t in m.OwnLane(0).Towers) t.BuildLeft = 0;
             m.OwnLane(0).Send(WaveCatalog.Attacker(1), true); // 늑대 한 마리
             int before = p.Gold;
@@ -131,7 +131,7 @@ namespace LaneBattle.Tests
             var cfg = new MatchConfig { PlayersPerTeam = 2, MatchSeconds = 120 };
             var m = MatchRunner.Play(cfg, 9, new IMatchAgent[] { new SimpleBot(), new SimpleBot() });
             Assert.IsTrue(m.IsOver);
-            Assert.AreEqual(5, m.OwnLane(0).Cfg.Width);
+            Assert.AreEqual(MapCatalog.TwoVsTwo, m.OwnLane(0).Cfg.Map);
         }
     }
 }

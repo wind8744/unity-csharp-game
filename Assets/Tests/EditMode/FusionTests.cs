@@ -17,14 +17,14 @@ namespace LaneBattle.Tests
             var sim = NewMatch();
             Run(sim, MatchCommand.Build(0, 0, 1, 0, 0), MatchCommand.Build(0, 0, 1, 1, 0), MatchCommand.Build(0, 0, 1, 2, 0));
             var lane = sim.OwnLane(0);
-            var target = lane.TowerAt(1, 0);
+            var target = lane.TowerAtCell(1, 0);
             Assert.IsNotNull(sim.MergeMates(0, target));
             Run(sim, MatchCommand.Merge(0, 0, target.Id));
             int alive = 0; Tower star = null;
             foreach (var t in lane.Towers) if (t.Alive) { alive++; star = t; }
             Assert.AreEqual(1, alive);
             Assert.AreEqual(2, star.Star);
-            Assert.AreEqual(1, star.Col); Assert.AreEqual(0, star.Row);
+            Assert.AreEqual(1, star.Cx); Assert.AreEqual(0, star.Cy);
             Assert.AreEqual(0, star.BuildLeft, "합친 타워는 즉시 완성");
             Assert.IsTrue(sim.Events.Exists(e => e.Type == MatchEventType.Merged && e.A == star.Id && e.B == 2));
             Assert.IsNull(sim.MergeMates(0, star));
@@ -36,7 +36,7 @@ namespace LaneBattle.Tests
             var sim = NewMatch();
             Run(sim, MatchCommand.Build(0, 0, 1, 0, 0), MatchCommand.Build(0, 0, 1, 1, 0), MatchCommand.Build(0, 0, 2, 2, 0));
             var lane = sim.OwnLane(0);
-            Run(sim, MatchCommand.Merge(0, 0, lane.TowerAt(0, 0).Id));
+            Run(sim, MatchCommand.Merge(0, 0, lane.TowerAtCell(0, 0).Id));
             Assert.IsTrue(sim.Events.Exists(e => e.Type == MatchEventType.Rejected));
             int alive = 0; foreach (var t in lane.Towers) if (t.Alive) alive++;
             Assert.AreEqual(3, alive);
@@ -45,7 +45,7 @@ namespace LaneBattle.Tests
         [Test]
         public void Star2TowerHitsHarderAndReachesFurther()
         {
-            var cfg = new LaneConfig { AutoWaves = false, TowerDamagePercent = 100, BuildSeconds = 0 };
+            var cfg = new LaneConfig { AutoWaves = false, TowerDamagePercent = 100, BuildSeconds = 0, Map = MapDef.Straight(20) };
             var one = new LaneSim(cfg, 1); var star = new LaneSim(cfg, 1);
             var a = one.Build(WaveCatalog.Tower(7), 0, 0);
             var b1 = star.Build(WaveCatalog.Tower(7), 0, 0); var b2 = star.Build(WaveCatalog.Tower(7), 1, 0); var b3 = star.Build(WaveCatalog.Tower(7), 2, 0);
@@ -69,18 +69,18 @@ namespace LaneBattle.Tests
         public void RecipeFusesTwoTowersIntoTier2()
         {
             var sim = NewMatch();
-            Run(sim, MatchCommand.Build(0, 0, 1, 0, 0), MatchCommand.Build(0, 0, 4, 1, 1));
+            Run(sim, MatchCommand.Build(0, 0, 1, 0, 0), MatchCommand.Build(0, 0, 4, 3, 0));
             var lane = sim.OwnLane(0);
-            var archer = lane.TowerAt(0, 0); var spear = lane.TowerAt(1, 1);
+            var archer = lane.TowerAtCell(0, 0); var spear = lane.TowerAtCell(3, 0);
             var opts = sim.FuseOptions(0, archer);
             Assert.AreEqual(1, opts.Count);
             Assert.AreEqual(10, opts[0].result.Id);
             Run(sim, MatchCommand.Fuse(0, 0, archer.Id, spear.Id));
-            var fused = lane.TowerAt(0, 0);
+            var fused = lane.TowerAtCell(0, 0);
             Assert.IsNotNull(fused);
             Assert.AreEqual("불화살 사수", fused.Def.Name);
             Assert.IsTrue(fused.Def.IsFused);
-            Assert.IsNull(lane.TowerAt(1, 1), "재료는 사라진다");
+            Assert.IsNull(lane.TowerAtCell(3, 0), "재료는 사라진다");
             Assert.IsTrue(sim.Events.Exists(e => e.Type == MatchEventType.Fused && e.B == 10));
             Assert.AreEqual(13 * 80 / 100, MatchSim.SellValueOf(fused));
         }
@@ -91,7 +91,7 @@ namespace LaneBattle.Tests
             var sim = NewMatch();
             Run(sim, MatchCommand.Build(0, 0, 1, 0, 0), MatchCommand.Build(0, 0, 2, 1, 0));
             var lane = sim.OwnLane(0);
-            Run(sim, MatchCommand.Fuse(0, 0, lane.TowerAt(0, 0).Id, lane.TowerAt(1, 0).Id));
+            Run(sim, MatchCommand.Fuse(0, 0, lane.TowerAtCell(0, 0).Id, lane.TowerAtCell(1, 0).Id));
             Assert.IsTrue(sim.Events.Exists(e => e.Type == MatchEventType.Rejected));
             Assert.IsNull(WaveCatalog.FindRecipe(1, 2));
             Assert.IsNotNull(WaveCatalog.FindRecipe(4, 1), "순서 무관");
@@ -125,7 +125,7 @@ namespace LaneBattle.Tests
             var sim = NewMatch(2);
             Run(sim, MatchCommand.Build(0, 0, 1, 0, 0), MatchCommand.Build(0, 0, 1, 1, 0), MatchCommand.Build(0, 1, 1, 2, 0));
             var lane = sim.OwnLane(0);
-            Assert.IsNull(sim.MergeMates(0, lane.TowerAt(0, 0)));
+            Assert.IsNull(sim.MergeMates(0, lane.TowerAtCell(0, 0)));
         }
 
         [TestCase(1)] [TestCase(2)] [TestCase(3)]

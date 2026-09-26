@@ -3,38 +3,37 @@ using System.Collections.Generic;
 
 namespace LaneBattle.Core.Wave
 {
-    /// <summary>라인 하나의 형태와 시간 설정. 좌표는 밀리칸(1칸 = 1000).</summary>
+    /// <summary>라인(맵) 하나의 설정. 좌표는 밀리칸(1칸 = 1000).</summary>
     public sealed class LaneConfig
     {
-        public int Width = 4;               // 열 수
-        public int Length = 30;             // 칸 (v0.5: 20 → 30, 오는 걸 보고 대응할 시간)
-        public int GridStartX = 10;         // 앞줄 x (타워 격자는 라인 중간)
-        public int Rows = 3;
+        public MapDef Map = MapCatalog.OneVsOne;
         public int TicksPerSecond = 20;
         public int MatchSeconds = 600;
         public int FirstWaveSeconds = 30;
         public int WaveIntervalSeconds = 30;
         public int WaveScalePercent = 100;
-        public int LateWaveIndex = 9;       // 이 번호(0부터)부터 기본 웨이브 체력이 웨이브마다 LateWaveStepPercent 씩 오른다 (후반 압박, 문서 4절)
+        public int LateWaveIndex = 9;       // 이 번호(0부터)부터 기본 웨이브 체력이 웨이브마다 LateWaveStepPercent 씩 오른다 (후반 압박)
         public int LateWaveStepPercent = 8;
         public int BuildSeconds = 2;
         public int BaseHp = 30;
         public int SpawnGapTicks = 6;       // 같은 무리 안 출발 간격
         public bool AutoWaves = true;
-        public int CreepSpeedPercent = 50;  // 밸런스 전역 배율 (v0.5: 60 → 50)
+        public int CreepSpeedPercent = 50;  // 밸런스 전역 배율 (v0.5: 50%)
         public int TowerDamagePercent = 100;
+        public int PathLengthMilli => Map.LengthMilli;
     }
 
     public sealed class Tower
     {
-        public int Id; public TowerDef Def; public int Col, Row, Owner;
-        public int X, Y;
+        public int Id; public TowerDef Def; public int Cx, Cy, Owner;   // 칸 좌표
+        public int X, Y;                    // 칸 중심 (밀리)
         public bool Upgraded;
         public int Star = 1;                // 같은 타워 3개 → ★2, ★2 3개 → ★3
         public int UpgradePercent = 50;     // 정예 증강이면 80
         public bool ForceAntiAir;           // 대공망 증강
         public int SlowedLeft, SlowedPercent; // 저주: 공속 감소
         public int BuildLeft, CooldownLeft, SilenceLeft;
+        public bool JobAdj;                 // 직업 시너지: 8방향 이웃에 같은 직업 타워
         public bool Alive = true;
         public bool Ready => Alive && BuildLeft == 0 && SilenceLeft == 0;
         public int TargetId = -1;
@@ -42,8 +41,9 @@ namespace LaneBattle.Core.Wave
 
     public sealed class Creep
     {
-        public int Id; public AttackerDef Def; public int Col;
-        public int X, Y;
+        public int Id; public AttackerDef Def;
+        public int Dist = -1;               // 경로 진행도 (밀리). -1 = 아직 출발 전
+        public int X, Y;                    // 현재 위치 (밀리)
         public int Hp, MaxHp;
         public int SpeedPerTick;
         public int SlowLeft, SlowPercent, StealthLeft, BurnLeft, BurnPerSec, BurnAcc, HealAcc, PeriodicLeft;
@@ -55,6 +55,7 @@ namespace LaneBattle.Core.Wave
         public bool GroupNameBonus, GroupTribeBonus;
         public (int range10, int tenths)? SpawnSilenceOverride; // 침묵탄
         public bool Alive = true;
+        public bool Spawned => Dist >= 0;
         public bool Stealthed => StealthLeft > 0;
     }
 
@@ -68,12 +69,13 @@ namespace LaneBattle.Core.Wave
     }
 
     /// <summary>
-    /// 라인 하나의 결정론 실시간 시뮬레이션. 정수만 쓴다. 타워는 공격만 하고 맞지 않으며, 유닛은 걷기만 한다.
-    /// 명령(짓기·판매·강화·보내기)은 어느 틱에든 들어올 수 있고, 같은 (설정, 시드, 틱별 명령)이면 결과가 같다.
+    /// 맵 하나의 결정론 실시간 시뮬레이션. 정수만 쓴다. 타워는 공격만 하고 맞지 않으며, 유닛은 경로를 따라 걷기만 한다.
+    /// 명령(짓기·판매·강화·합치기·합성·보내기)은 어느 틱에든 들어올 수 있고, 같은 (설정, 시드, 틱별 명령)이면 결과가 같다.
     /// </summary>
     public sealed class LaneSim
     {
         public LaneConfig Cfg { get; }
+        public MapDef Map => Cfg.Map;
         public int Tick { get; private set; }
         public int BaseHp { get; private set; }
         public int Leaked { get; private set; }
@@ -85,12 +87,9 @@ namespace LaneBattle.Core.Wave
         public LaneModifiers Mod;                      // 이벤트 시간대
         // 시너지 (매 틱 재계산)
         public int[] TribeCount { get; } = new int[3];
+        public int[] JobPairs { get; } = new int[3];   // 직업 시너지가 켜진 타워 수 (전사, 궁수, 마법사)
         public bool Forest3, Forest5, Fire3, Fire5, Machine3, Machine5;
-        public bool[] RowWarrior2 { get; } = new bool[3];
-        public bool[] RowArcher2 { get; } = new bool[3];
-        public bool[] RowMage2 { get; } = new bool[3];
-        public bool[] TowerFlash { get; } = new bool[3]; // (미사용)
-        public int LastBossKillX { get; private set; } = -1;
+        public int LastBossKillDist { get; private set; } = -1;
         public readonly List<Tower> Towers = new List<Tower>();
         public readonly List<Creep> Creeps = new List<Creep>();
         public readonly List<SimEvent> Events = new List<SimEvent>();
@@ -111,7 +110,6 @@ namespace LaneBattle.Core.Wave
         public void SilenceAll(int ticks) { foreach (var t in Towers) if (t.Alive) t.SilenceLeft = Math.Max(t.SilenceLeft, ticks); }
         public int TicksToNextWave => Math.Max(0, NextWaveTick() - Tick);
         int NextWaveTick() => (Cfg.FirstWaveSeconds + NextWaveIndex * Cfg.WaveIntervalSeconds) * Cfg.TicksPerSecond;
-        static int Milli(int cells) => cells * 1000;
 
         public Creep FindCreep(int id)
         {
@@ -135,20 +133,21 @@ namespace LaneBattle.Core.Wave
             return null;
         }
 
-        public Tower TowerAt(int col, int row)
+        public Tower TowerAtCell(int x, int y)
         {
-            foreach (var t in Towers) if (t.Alive && t.Col == col && t.Row == row) return t;
+            foreach (var t in Towers) if (t.Alive && t.Cx == x && t.Cy == y) return t;
             return null;
         }
 
-        public Tower Build(TowerDef def, int col, int row, int owner = 0)
+        public bool CanBuildAt(int x, int y) => Map.IsSlot(x, y) && TowerAtCell(x, y) == null;
+
+        public Tower Build(TowerDef def, int x, int y, int owner = 0)
         {
-            if (col < 0 || col >= Cfg.Width || row < 0 || row >= Cfg.Rows) return null;
-            if (TowerAt(col, row) != null) return null;
+            if (!CanBuildAt(x, y)) return null;
+            var (px, py) = MapDef.Center((x, y));
             var t = new Tower
             {
-                Id = _nextId++, Def = def, Col = col, Row = row, Owner = owner,
-                X = Milli(Cfg.GridStartX + row) + 500, Y = Milli(col) + 500,
+                Id = _nextId++, Def = def, Cx = x, Cy = y, Owner = owner, X = px, Y = py,
                 BuildLeft = Cfg.BuildSeconds * Cfg.TicksPerSecond,
             };
             Towers.Add(t);
@@ -188,7 +187,7 @@ namespace LaneBattle.Core.Wave
             if (a.Def.Id != b.Def.Id || a.Def.Id != c.Def.Id || a.Star != b.Star || a.Star != c.Star || a.Star >= 3) return null;
             var r = new Tower
             {
-                Id = _nextId++, Def = a.Def, Col = a.Col, Row = a.Row, Owner = a.Owner, X = a.X, Y = a.Y,
+                Id = _nextId++, Def = a.Def, Cx = a.Cx, Cy = a.Cy, Owner = a.Owner, X = a.X, Y = a.Y,
                 Star = a.Star + 1, Upgraded = a.Upgraded || b.Upgraded || c.Upgraded,
                 UpgradePercent = Math.Max(a.UpgradePercent, Math.Max(b.UpgradePercent, c.UpgradePercent)),
                 ForceAntiAir = a.ForceAntiAir || b.ForceAntiAir || c.ForceAntiAir,
@@ -209,7 +208,7 @@ namespace LaneBattle.Core.Wave
             if (def == null) return null;
             var r = new Tower
             {
-                Id = _nextId++, Def = def, Col = a.Col, Row = a.Row, Owner = a.Owner, X = a.X, Y = a.Y,
+                Id = _nextId++, Def = def, Cx = a.Cx, Cy = a.Cy, Owner = a.Owner, X = a.X, Y = a.Y,
                 Star = 1, Upgraded = a.Upgraded || b.Upgraded, UpgradePercent = Math.Max(a.UpgradePercent, b.UpgradePercent),
                 ForceAntiAir = a.ForceAntiAir || b.ForceAntiAir,
             };
@@ -220,14 +219,14 @@ namespace LaneBattle.Core.Wave
             return r;
         }
 
-        /// <summary>유닛을 이 라인에 보낸다 (상대가 보낸 것, 또는 기본 웨이브). 무리는 출발 간격을 두고 줄지어 나온다.</summary>
+        /// <summary>유닛을 이 맵에 보낸다 (상대가 보낸 것, 또는 기본 웨이브). 무리는 출발 간격을 두고 줄지어 나온다.</summary>
         public Creep Send(AttackerDef def, bool fromEnemy = true, int groupId = 0, int hpMult = 1, int hpPercent = 100)
         {
-            int col = _rng.Next(Cfg.Width);
             int hp = def.Hp * hpMult * hpPercent / 100;
+            var start = MapDef.Center(Map.Start);
             var c = new Creep
             {
-                Id = _nextId++, Def = def, Col = col, X = -1000, Y = Milli(col) + 500,
+                Id = _nextId++, Def = def, Dist = -1, X = start.X, Y = start.Y,
                 MaxHp = hp, Hp = hp, SpeedPerTick = Math.Max(1, def.SpeedMilliPerSec * Cfg.CreepSpeedPercent / 100 / Cfg.TicksPerSecond),
                 Boss = hpMult > 1 || def.Rarity == Rarity.Hero, FromEnemy = fromEnemy, GroupId = groupId,
                 StealthLeft = def.StealthSeconds * Cfg.TicksPerSecond,
@@ -271,7 +270,8 @@ namespace LaneBattle.Core.Wave
                 if (_queue[i].tick <= Tick)
                 {
                     var c = _queue[i].creep;
-                    c.X = 0;
+                    c.Dist = 0;
+                    (c.X, c.Y) = Map.PosAt(0);
                     Creeps.Add(c);
                     Emit(SimEventType.Spawn, c.Id, -1, 0);
                     if (c.Def.SpawnSilenceTenths > 0) SilenceTowersNear(c, c.Def.SpawnSilenceRange10 * 100, c.Def.SpawnSilenceTenths * Cfg.TicksPerSecond / 10);
@@ -337,14 +337,15 @@ namespace LaneBattle.Core.Wave
 
             FlushFireBursts();
 
-            // 유닛 이동 → 누수
+            // 유닛 이동 (경로 진행도) → 누수
+            int length = Map.LengthMilli;
             foreach (var c in Creeps)
             {
                 if (!c.Alive) continue;
                 int speed = c.SpeedPerTick * (100 + Mod.CreepSpeedBonusPercent) / 100;
                 if (c.SlowLeft > 0 && !c.Def.SlowImmune) speed = speed * (100 - c.SlowPercent) / 100;
-                c.X += Math.Max(1, speed);
-                if (c.X >= Milli(Cfg.Length))
+                c.Dist += Math.Max(1, speed);
+                if (c.Dist >= length)
                 {
                     c.Alive = false;
                     int leak = c.Def.Leak + c.ExtraLeak;
@@ -352,6 +353,7 @@ namespace LaneBattle.Core.Wave
                     BaseHp -= leak;
                     Emit(SimEventType.Leak, c.Id, -1, leak);
                 }
+                else (c.X, c.Y) = Map.PosAt(c.Dist);
             }
             Creeps.RemoveAll(c => !c.Alive);
 
@@ -374,7 +376,7 @@ namespace LaneBattle.Core.Wave
         {
             int r10 = t.Def.Range10 + WaveCatalog.StarRangeBonus10(t.Star);
             if (Forest3) r10 += 5;
-            if (t.Def.Job == DefJob.Archer && RowArcher2[t.Row]) r10 += 10;
+            if (t.Def.Job == DefJob.Archer && t.JobAdj) r10 += 10;
             r10 += Mod.TowerRangeDelta10;
             return Math.Max(10, r10) * 100;
         }
@@ -383,8 +385,8 @@ namespace LaneBattle.Core.Wave
 
         /// <summary>오라 수치도 별을 따라 오른다 (★2 ×1.5, ★3 ×2).</summary>
         static int AuraPercent(Tower s, int percent) => s.Star <= 1 ? percent : s.Star == 2 ? percent * 150 / 100 : percent * 2;
-        int MageBoost(Tower t, int percent) => t.Def.Job == DefJob.Mage && RowMage2[t.Row] ? percent * 150 / 100 : percent;
-        int SplashRadius10(Tower t) => t.Def.SplashRadius10 == 0 ? 0 : (t.Def.Job == DefJob.Mage && RowMage2[t.Row] ? t.Def.SplashRadius10 * 150 / 100 : t.Def.SplashRadius10);
+        int MageBoost(Tower t, int percent) => t.Def.Job == DefJob.Mage && t.JobAdj ? percent * 150 / 100 : percent;
+        int SplashRadius10(Tower t) => t.Def.SplashRadius10 == 0 ? 0 : (t.Def.Job == DefJob.Mage && t.JobAdj ? t.Def.SplashRadius10 * 150 / 100 : t.Def.SplashRadius10);
 
         int EffectiveCooldown(Tower t)
         {
@@ -407,7 +409,7 @@ namespace LaneBattle.Core.Wave
             dmg = dmg * WaveCatalog.StarPercent(t.Star) / 100;
             if (t.Upgraded) dmg = dmg * (100 + t.UpgradePercent) / 100;
             if (Fire3) dmg = dmg * 110 / 100;
-            if (t.Def.Job == DefJob.Warrior && RowWarrior2[t.Row]) dmg = dmg * 120 / 100;
+            if (t.Def.Job == DefJob.Warrior && t.JobAdj) dmg = dmg * 120 / 100;
             foreach (var s in Towers)
                 if (s.Alive && s.Ready && s.Def.AuraAtkPercent > 0 && s.Id != t.Id && Dist2(s.X, s.Y, t.X, t.Y) <= Sq(s.Def.Range10 * 100))
                 { dmg = dmg * (100 + MageBoost(s, AuraPercent(s, s.Def.AuraAtkPercent))) / 100; break; }
@@ -416,8 +418,9 @@ namespace LaneBattle.Core.Wave
             return dmg;
         }
 
-        bool CanTarget(Tower t, Creep c) => c.Alive && c.X >= 0 && !c.Stealthed && (!c.Def.Flying || IsAntiAir(t));
+        bool CanTarget(Tower t, Creep c) => c.Alive && c.Spawned && !c.Stealthed && (!c.Def.Flying || IsAntiAir(t));
 
+        /// <summary>사거리 안에서 기지에 가장 가까운(진행도가 가장 큰) 유닛.</summary>
         Creep ClosestToBase(Tower t, int rangeMilli)
         {
             Creep best = null;
@@ -425,7 +428,7 @@ namespace LaneBattle.Core.Wave
             foreach (var c in Creeps)
             {
                 if (!CanTarget(t, c) || Dist2(t.X, t.Y, c.X, c.Y) > r2) continue;
-                if (best == null || c.X > best.X || (c.X == best.X && c.Id < best.Id)) best = c;
+                if (best == null || c.Dist > best.Dist || (c.Dist == best.Dist && c.Id < best.Id)) best = c;
             }
             return best;
         }
@@ -480,7 +483,7 @@ namespace LaneBattle.Core.Wave
             c.Hp = 0; c.Alive = false;
             Kills++; GoldEarned++;
             if (!c.NoKillGold) GoldKills++;
-            if (c.Boss) LastBossKillX = c.X;
+            if (c.Boss) LastBossKillDist = c.Dist;
             Emit(SimEventType.Death, sourceId, c.Id, 0);
             if (Fire5) _fireBursts.Add(c);
         }
@@ -495,24 +498,33 @@ namespace LaneBattle.Core.Wave
             _fireBursts.Clear();
             foreach (var center in centers)
                 foreach (var c in Creeps)
-                    if (c.Alive && c.X >= 0 && Dist2(center.X, center.Y, c.X, c.Y) <= Sq(1000)) ApplyDamage(c, 5, -2);
+                    if (c.Alive && c.Spawned && Dist2(center.X, center.Y, c.X, c.Y) <= Sq(1000)) ApplyDamage(c, 5, -2);
             _fireBursts.Clear();
         }
 
         void RecomputeSynergy()
         {
-            for (int i = 0; i < 3; i++) { TribeCount[i] = 0; RowWarrior2[i] = RowArcher2[i] = RowMage2[i] = false; }
-            var rowJobs = new int[3, 3];
+            for (int i = 0; i < 3; i++) { TribeCount[i] = 0; JobPairs[i] = 0; }
             foreach (var t in Towers)
             {
                 if (!t.Alive || t.BuildLeft > 0) continue;
                 TribeCount[(int)t.Def.Tribe]++;
-                rowJobs[t.Row, (int)t.Def.Job]++;
             }
             Forest3 = TribeCount[0] >= 3; Forest5 = TribeCount[0] >= 5;
             Fire3 = TribeCount[1] >= 3; Fire5 = TribeCount[1] >= 5;
             Machine3 = TribeCount[2] >= 3; Machine5 = TribeCount[2] >= 5;
-            for (int r = 0; r < 3; r++) { RowWarrior2[r] = rowJobs[r, 0] >= 2; RowArcher2[r] = rowJobs[r, 1] >= 2; RowMage2[r] = rowJobs[r, 2] >= 2; }
+            // 직업 시너지: 8방향 이웃 칸에 같은 직업의 완성된 타워가 있으면 켜진다
+            foreach (var t in Towers)
+            {
+                t.JobAdj = false;
+                if (!t.Alive || t.BuildLeft > 0) continue;
+                foreach (var o in Towers)
+                {
+                    if (!o.Alive || o.BuildLeft > 0 || o.Id == t.Id || o.Def.Job != t.Def.Job) continue;
+                    if (Math.Abs(o.Cx - t.Cx) <= 1 && Math.Abs(o.Cy - t.Cy) <= 1) { t.JobAdj = true; break; }
+                }
+                if (t.JobAdj) JobPairs[(int)t.Def.Job]++;
+            }
         }
 
         void SilenceTowersNear(Creep c, int rangeMilli, int ticks)
@@ -535,7 +547,7 @@ namespace LaneBattle.Core.Wave
         {
             var sb = new System.Text.StringBuilder();
             sb.Append(Tick).Append('|').Append(BaseHp).Append('|').Append(Leaked).Append('|').Append(Kills).Append('|');
-            foreach (var c in Creeps) sb.Append(c.Id).Append(':').Append(c.X).Append(',').Append(c.Hp).Append(' ');
+            foreach (var c in Creeps) sb.Append(c.Id).Append(':').Append(c.Dist).Append(',').Append(c.Hp).Append(' ');
             foreach (var t in Towers) if (t.Alive) sb.Append('T').Append(t.Id).Append(':').Append(t.Def.Id).Append('s').Append(t.Star).Append(':').Append(t.CooldownLeft).Append(' ');
             return sb.ToString();
         }
