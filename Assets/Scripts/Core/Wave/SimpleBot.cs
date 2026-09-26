@@ -73,6 +73,10 @@ namespace LaneBattle.Core.Wave
                 }
             }
 
+            // 2b'. 경험치: 여유 골드가 있으면 30초마다 한 번 산다 (레벨이 시간에 뒤처지면 더 자주)
+            if (p.Level < WaveCatalog.MaxLevel && p.Gold >= WaveCatalog.XpBuyCost + reserve + 10 && (seconds % 30 == 0 || p.Level < 2 + seconds / 60))
+            { output.Add(MatchCommand.BuyXp(team, player)); return; }
+
             // 2c. 돌격 강화: 분당 1레벨 정도, 여유 골드가 있을 때
             {
                 int lv = sim.Teams[team].SendLevel;

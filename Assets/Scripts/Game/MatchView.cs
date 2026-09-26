@@ -35,7 +35,7 @@ namespace LaneBattle.Game
         Transform _ui, _hand, _shop, _actionPanel, _augmentPanel, _infoPanel, _resultPanel, _recipePanel, _menuPanel;
         Text _time, _wave, _myHp, _enemyHp, _gold, _income, _banner, _msg, _handTitle, _selectedInfo, _mission, _synergy, _eventText, _intel, _team;
         Image _myHpBar, _enemyHpBar;
-        Button _sendUp; Text _drawInfo;
+        Button _sendUp, _xpBtn; Text _drawInfo, _levelText;
         readonly List<Button> _shopButtons = new List<Button>();
         readonly List<Image> _shopImages = new List<Image>();
         int _lastHandVersion = -1, _lastOfferVersion = -1, _lastActionVersion = -1, _selectedTower = -1, _lastShopGold = -1;
@@ -277,6 +277,9 @@ namespace LaneBattle.Game
                 case MatchEventType.GroupSynergy:
                     if (ev.Team == MyTeam) ShowMsg(ev.B == 1 ? "무리 시너지: 같은 유닛 3마리 → 체력 +20%" : ev.B == 2 ? "무리 시너지: 야수 3 → 속도 +20%" : ev.B == 3 ? "무리 시너지: 공중 3 → 체력 +15%" : ev.B == 4 ? "무리 시너지: 거인 3 → 누수 +1" : "무리 시너지: 암흑 3 → 은신 +1초");
                     break;
+                case MatchEventType.LevelUp:
+                    if (mine) { ShowMsg($"레벨 {ev.A}! 뽑기에 좋은 유닛이 더 잘 나옵니다" + (ev.A == 4 ? " — 이제 전설도 나옵니다" : ""), 3f); Sfx.Play("augment_pick", 0.7f); }
+                    break;
                 case MatchEventType.SendsUpgraded:
                     if (ev.Team == MyTeam) { ShowMsg($"돌격 강화 Lv.{ev.A}! 우리 팀이 보내는 유닛 체력 +{MatchSim.SendLevelHpPercent * ev.A}% · 속도 +{MatchSim.SendLevelSpeedPercent * ev.A}%"); if (mine) Sfx.Play("upgrade", 0.8f); }
                     else ShowMsg($"상대 팀 돌격 강화 Lv.{ev.A} — 보내는 유닛이 더 단단해집니다", 3f);
@@ -310,6 +313,7 @@ namespace LaneBattle.Game
                 if (kb.digit3Key.wasPressedThisFrame && Net == null) Speed = 4f;
                 if (kb.dKey.wasPressedThisFrame) Draw();
                 if (kb.fKey.wasPressedThisFrame) { Draw(); Draw(); Draw(); }
+                if (kb.eKey.wasPressedThisFrame) BuyXp();
                 for (int i = 0; i < WaveCatalog.BasicTowers.Length; i++)
                 {
                     var key = i switch { 0 => kb.qKey, 1 => kb.wKey, 2 => kb.eKey, 3 => kb.rKey, 4 => kb.tKey, 5 => kb.yKey, 6 => kb.uKey, 7 => kb.iKey, _ => kb.oKey };
@@ -381,6 +385,7 @@ namespace LaneBattle.Game
         public void Fuse(int partnerId) { if (_selectedTower >= 0) { _pending.Add(MatchCommand.Fuse(MyTeam, MyPlayer, _selectedTower, partnerId)); SelectTower(-1); } }
         public void Transfer(int toPlayer, int amount) { _pending.Add(MatchCommand.Transfer(MyTeam, MyPlayer, toPlayer, amount)); }
         public void UpgradeSends() { if (!Sim.IsOver) _pending.Add(MatchCommand.UpgradeSends(MyTeam, MyPlayer)); }
+        public void BuyXp() { if (!Sim.IsOver) _pending.Add(MatchCommand.BuyXp(MyTeam, MyPlayer)); }
         void TogglePause() { if (Net != null) { ShowMsg("온라인에서는 정지할 수 없습니다"); return; } _paused = !_paused; ShowMsg(_paused ? "정지 (스페이스로 계속)" : "계속"); }
 
         // ─────────────────────────── HUD ───────────────────────────
@@ -471,8 +476,10 @@ namespace LaneBattle.Game
             _hand = UiKit.Rect(ui, "Hand", 16, 530, 540, 118);
             UiKit.SpriteButton(ui, "Draw", 16, 654, 100, 34, "뽑기 (D)", Draw, "ui_button", 14);
             UiKit.SpriteButton(ui, "Draw3", 120, 654, 74, 34, "×3 (F)", () => { Draw(); Draw(); Draw(); }, "ui_button", 13);
-            _sendUp = UiKit.SpriteButton(ui, "SendUp", 200, 654, 150, 34, "", UpgradeSends, "ui_button_green", 12);
-            _drawInfo = UiKit.Label(ui, "DrawInfo", 358, 654, 200, 34, "", 10, TextAnchor.MiddleLeft, UiKit.InkSoft);
+            _xpBtn = UiKit.SpriteButton(ui, "Xp", 200, 654, 118, 34, "", BuyXp, "ui_button_blue", 11);
+            _sendUp = UiKit.SpriteButton(ui, "SendUp", 324, 654, 126, 34, "", UpgradeSends, "ui_button_green", 11);
+            _drawInfo = UiKit.Label(ui, "DrawInfo", 456, 654, 104, 34, "", 9, TextAnchor.MiddleLeft, UiKit.InkSoft);
+            _levelText = UiKit.Label(ui, "LevelText", 340, 510, 216, 18, "", 11, TextAnchor.MiddleRight, UiKit.Ink);
 
             UiKit.Label(ui, "ShopTitle", 574, 510, 450, 18, "타워 (Q~O) — 오른쪽 위 아이콘이 역할: 광역·원거리·감속·화상·대공·지원", 11, TextAnchor.MiddleLeft, UiKit.Ink);
             _shop = UiKit.Rect(ui, "Shop", 574, 530, 450, 66);
@@ -822,8 +829,12 @@ namespace LaneBattle.Game
                 var lbl = _sendUp.GetComponentInChildren<Text>();
                 lbl.text = cost < 0 ? $"돌격 강화 Lv.{lv} (최대)" : $"돌격 강화 Lv.{lv} → {cost}골드";
                 _sendUp.interactable = cost > 0 && p.Gold >= cost;
-                var (c, r, h, l) = WaveCatalog.DrawOdds(sec);
-                _drawInfo.text = $"뽑기 {p.DrawCost(Sim.Cfg)}골드: 일반{c} 희귀{r} 영웅{h} 전설{l}%\n{(sec < WaveCatalog.LegendUnlockSeconds ? $"전설은 {WaveCatalog.LegendUnlockSeconds / 60}:00부터" : "보낸 유닛 체력 +" + MatchSim.SendLevelHpPercent * lv + "% (강화)")}";
+                var (c, r, h, l) = WaveCatalog.DrawOdds(p.Level);
+                _drawInfo.text = $"일반{c} 희귀{r}\n영웅{h} 전설{l}%";
+                bool maxLv = p.Level >= WaveCatalog.MaxLevel;
+                _xpBtn.GetComponentInChildren<Text>().text = maxLv ? $"Lv.{p.Level} 최대" : $"경험치 +{WaveCatalog.XpBuyAmount} ({WaveCatalog.XpBuyCost}골드, E)";
+                _xpBtn.interactable = !maxLv && p.Gold >= WaveCatalog.XpBuyCost;
+                _levelText.text = maxLv ? $"레벨 {p.Level} (최대)" : $"레벨 {p.Level}  경험치 {p.Xp}/{WaveCatalog.XpToNext(p.Level)}  (수입마다 +{WaveCatalog.XpPerIncome})";
             }
             _income.text = $"팀 인컴 {Sim.Teams[MyTeam].Income} (상대 {Sim.Teams[EnemyTeam].Income}) · 다음 수입 {incomeIn}초 · 내 라인 처치 {my.Kills} 누수 {my.Leaked}";
         }

@@ -153,20 +153,43 @@ namespace LaneBattle.Tests
         }
 
         [Test]
-        public void DrawOddsShiftTowardStrongUnitsOverTime()
+        public void DrawOddsFollowPlayerLevel()
         {
-            var early = new Rng(7); var late = new Rng(7);
-            int legendsEarly = 0, legendsLate = 0, commonEarly = 0, commonLate = 0;
+            var lo = new Rng(7); var hi = new Rng(7);
+            int legendsLo = 0, legendsHi = 0, commonLo = 0, commonHi = 0;
             for (int i = 0; i < 400; i++)
             {
-                var a = MatchSim.RollAttacker(early, 60); var b = MatchSim.RollAttacker(late, 420);
-                if (a.Rarity == Rarity.Legend) legendsEarly++; if (b.Rarity == Rarity.Legend) legendsLate++;
-                if (a.Rarity == Rarity.Common) commonEarly++; if (b.Rarity == Rarity.Common) commonLate++;
+                var a = MatchSim.RollAttacker(lo, 1); var b = MatchSim.RollAttacker(hi, 9);
+                if (a.Rarity == Rarity.Legend) legendsLo++; if (b.Rarity == Rarity.Legend) legendsHi++;
+                if (a.Rarity == Rarity.Common) commonLo++; if (b.Rarity == Rarity.Common) commonHi++;
             }
-            Assert.AreEqual(0, legendsEarly, "4:00 전엔 전설이 안 나온다");
-            Assert.Greater(legendsLate, 20);
-            Assert.Greater(commonEarly, commonLate);
+            Assert.AreEqual(0, legendsLo, "레벨 1 엔 전설이 없다");
+            Assert.Greater(legendsHi, 50);
+            Assert.Greater(commonLo, commonHi);
             Assert.AreEqual(4, System.Array.FindAll(WaveCatalog.Attackers, a => a.Rarity == Rarity.Legend).Length);
+            for (int lv = 1; lv <= 9; lv++) { var (c, r, h, l) = WaveCatalog.DrawOdds(lv); Assert.AreEqual(100, c + r + h + l, "레벨 " + lv); }
+        }
+
+        [Test]
+        public void XpComesFromIncomeAndGoldAndLevelsUp()
+        {
+            var m = new MatchSim(new MatchConfig { FunLayer = false }, 6);
+            var p = m.Player(0, 0);
+            Assert.AreEqual(1, p.Level);
+            for (int i = 0; i < m.Cfg.IncomeIntervalSeconds * m.Cfg.TicksPerSecond; i++) m.Step();
+            Assert.AreEqual(2, p.Level, "첫 수입의 자동 경험치 2 로 레벨 2");
+            Assert.IsTrue(m.Events.Exists(e => e.Type == MatchEventType.LevelUp));
+            int gold = p.Gold;
+            m.Step(L(MatchCommand.BuyXp(0, 0)));
+            Assert.AreEqual(gold - WaveCatalog.XpBuyCost, p.Gold);
+            Assert.AreEqual(3, p.Level, "레벨 2 → 3 은 4 경험치");
+            p.Gold = 1000;
+            for (int i = 0; i < 60; i++) m.Step(L(MatchCommand.BuyXp(0, 0)));
+            Assert.AreEqual(WaveCatalog.MaxLevel, p.Level);
+            Assert.AreEqual(0, p.Xp);
+            m.Step(L(MatchCommand.BuyXp(0, 0)));
+            Assert.IsTrue(m.Events.Exists(e => e.Type == MatchEventType.Rejected), "최대 레벨에선 못 산다");
+            Assert.AreEqual(2, m.Player(1, 0).Level, "상대는 자동 경험치만 받아 레벨 2");
         }
 
         [Test]
