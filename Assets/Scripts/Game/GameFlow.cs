@@ -13,18 +13,20 @@ namespace LaneBattle.Game
         {
             Application.targetFrameRate = 60;
             var args = System.Environment.GetCommandLineArgs();
-            int mode = 0; bool titleShot = false, online = false, autoHost = false; string shot = null;
+            int mode = 0; bool titleShot = false, online = false, autoHost = false, tutorial = false; string shot = null;
             for (int i = 0; i < args.Length; i++)
             {
                 if (args[i] == "-mode" && i + 1 < args.Length && int.TryParse(args[i + 1], out int m)) mode = m;
                 if (args[i] == "-title") titleShot = true;
+                if (args[i] == "-tutorial") tutorial = true;
                 if (args[i] == "-online") online = true;
                 if (args[i] == "-host") autoHost = true;
                 if (args[i] == "-nosave") GameSession.NoSave = true;
                 if (args[i] == "-demo-profile") { var p = new LaneBattle.Core.Meta.Profile(); p.Apply(new LaneBattle.Core.Meta.MatchSummary { Win = true, MyLeaked = 0, MaxStar = 3, Sent = 70 }); ProfileStore.UseTransient(p); GameSession.NoSave = true; }
                 if (args[i] == "-screenshot" && i + 1 < args.Length) shot = args[i + 1];
             }
-            if (mode > 0) StartMatch(mode);
+            if (tutorial) StartTutorial();
+            else if (mode > 0) StartMatch(mode);
             else if (online) { ShowOnline(); if (autoHost) _lobby.SendMessage("Host"); }
             else ShowTitle();
             if ((titleShot || online) && shot != null) StartCoroutine(ScreenshotAndQuit(shot));
@@ -48,6 +50,7 @@ namespace LaneBattle.Game
             go.transform.SetParent(transform, false);
             _title = go.AddComponent<TitleScreen>();
             _title.OnStart = StartMatch;
+            _title.OnTutorial = StartTutorial;
             _title.OnOnline = ShowOnline;
         }
 
@@ -74,7 +77,12 @@ namespace LaneBattle.Game
             go.SetActive(true);
         }
 
-        public void StartMatch(int playersPerTeam)
+        /// <summary>튜토리얼: 1v1, 조용한 봇, 7단계 안내 (MatchView 가 GameSession.Tutorial 을 본다).</summary>
+        public void StartTutorial() { GameSession.Tutorial = true; StartMatchInner(1); }
+
+        public void StartMatch(int playersPerTeam) { GameSession.Tutorial = false; StartMatchInner(playersPerTeam); }
+
+        void StartMatchInner(int playersPerTeam)
         {
             if (_title != null) { Destroy(_title.gameObject); _title = null; }
             GameSession.PlayersPerTeam = Mathf.Clamp(playersPerTeam, 1, 3);

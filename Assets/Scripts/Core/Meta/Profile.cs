@@ -37,6 +37,8 @@ namespace LaneBattle.Core.Meta
         public readonly HashSet<MissionId> MissionsDone = new HashSet<MissionId>();
         public readonly HashSet<int> HiddenDiscovered = new HashSet<int>();   // 발견한 손패 조합 (결과 유닛 id)
         public string Title = "";
+        public bool TutorialDone;               // 튜토리얼을 끝까지(또는 건너뛰기) 했다
+        public bool Tips = true;                // 경기 중 상황 팁 (타이틀에서 끌 수 있다)
 
         public bool Has(string id) => Unlocks.Contains(id);
 
@@ -112,6 +114,8 @@ namespace LaneBattle.Core.Meta
             sb.Append("missions=").Append(string.Join(",", ms)).Append('\n');
             var hs = new List<string>(); foreach (var h in HiddenDiscovered) hs.Add(h.ToString());
             sb.Append("hidden=").Append(string.Join(",", hs)).Append('\n');
+            sb.Append("tutorial=").Append(TutorialDone ? 1 : 0).Append('\n');
+            sb.Append("tips=").Append(Tips ? 1 : 0).Append('\n');
             return sb.ToString();
         }
 
@@ -136,6 +140,8 @@ namespace LaneBattle.Core.Meta
                     case "unlocks": foreach (var u in v.Split(',')) if (u.Length > 0) p.Unlocks.Add(u); break;
                     case "missions": foreach (var m in v.Split(',')) if (Enum.TryParse(m, out MissionId id)) p.MissionsDone.Add(id); break;
                     case "hidden": foreach (var h in v.Split(',')) if (int.TryParse(h, out int hid)) p.HiddenDiscovered.Add(hid); break;
+                    case "tutorial": p.TutorialDone = v == "1"; break;
+                    case "tips": p.Tips = v != "0"; break;
                 }
             }
             return p;

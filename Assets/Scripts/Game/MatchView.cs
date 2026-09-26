@@ -47,6 +47,9 @@ namespace LaneBattle.Game
         PickMode _pick; int _pickResultDef; readonly HashSet<int> _pickCandidates = new HashSet<int>(); readonly List<int> _picked = new List<int>();
         float _stallTime, _netLostAt;
         float _slowSpeed = 1f;
+        public TutorialGuide Guide;          // 튜토리얼 판이면 단계 안내
+        CoachTips _coach;                    // 보통 판의 상황 팁 (프로필 Tips)
+        float _topPx = 56f;                  // 맵이 시작하는 화면 세로 (튜토리얼 패널이 있으면 더 아래)
 
         void Awake()
         {
@@ -74,6 +77,16 @@ namespace LaneBattle.Game
                 if (a == "-nosave") GameSession.NoSave = true;
                 if (a == "-pick") { var t = _selectedTower >= 0 ? Sim.OwnLane(MyTeam).TowerAt(_selectedTower) : null; if (t != null) { var ids = Sim.MergeCandidates(MyTeam, t); if (ids.Count > 2) BeginPick(PickMode.Merge, ids); } }
                 if (a == "-recipes") ToggleRecipes();
+                if (a == "-demo-towers")
+                {   // 스크린샷용: 같은 타워 3개 + 레시피 짝을 지어 C·R 배지를 보인다
+                    var lane0 = Sim.OwnLane(MyTeam); var cells = new List<(int, int)>();
+                    for (int y = 0; y < lane0.Map.H && cells.Count < 4; y++) for (int x = 0; x < lane0.Map.W && cells.Count < 4; x++) if (lane0.CanBuildAt(x, y)) cells.Add((x, y));
+                    var rec = WaveCatalog.FusedTowers[0]; int partner = rec.RecipeA == 1 ? rec.RecipeB : rec.RecipeA;
+                    Sim.Player(MyTeam, MyPlayer).Gold += 60;
+                    for (int i = 0; i < 3 && i < cells.Count; i++) Build(1, cells[i].Item1, cells[i].Item2);
+                    if (cells.Count > 3) Build(partner, cells[3].Item1, cells[3].Item2);
+                    FastForward(2f);
+                }
                 if (a == "-buildmenu") ToggleBuildMenu();
                 if (a == "-ghost") StartGhost(5);
                 if (a == "-combo") { var hp = Sim.Player(MyTeam, MyPlayer); hp.Hand.Clear(); hp.Hand.Add(1); hp.Hand.Add(3); hp.Hand.Add(1); hp.Hand.Add(6); hp.Hand.Add(1); BuildHand(); }
@@ -112,10 +125,16 @@ namespace LaneBattle.Game
             else
             {
                 var profile = ProfileStore.Current;
+                bool tutorial = GameSession.Tutorial;
+                if (tutorial) PlayersPerTeam = 1;
                 var cfg = new MatchConfig { PlayersPerTeam = PlayersPerTeam, AllowedSecretAugments = profile.AllowedSecretAugments(), SharedTowers = GameSession.SharedTowers && PlayersPerTeam > 1 };
                 var chosen = MapCatalog.ByName(GameSession.MapName);
                 if (chosen != null && profile.UnlockedMaps().Contains(chosen.Name)) cfg.MapOverride = chosen;
                 if (GameSession.HardBot && profile.HardBotUnlocked) GameSession.BotAggression = 85;
+                if (tutorial)
+                {   // 배우는 판: 증강·이벤트·미션 없이, 첫 75초는 웨이브도 상대도 조용, 5분, 골드 넉넉히
+                    cfg.FunLayer = false; cfg.StartGold = 90; cfg.FirstWaveSeconds = 75; cfg.WaveIntervalSeconds = 30; cfg.MatchSeconds = 300; cfg.MapOverride = null;
+                }
                 Sim = new MatchSim(cfg, Seed);
                 _bots = new IMatchAgent[2][];
                 for (int t = 0; t < 2; t++)
@@ -124,25 +143,43 @@ namespace LaneBattle.Game
                     for (int p = 0; p < PlayersPerTeam; p++)
                     {
                         bool human = t == MyTeam && p == MyPlayer && !BotPlaysHuman;
-                        _bots[t][p] = human ? null : new SimpleBot { Aggression = t == EnemyTeam ? GameSession.BotAggression + p * 5 : 55 + p * 10 };
+                        _bots[t][p] = human ? null : tutorial && t == EnemyTeam ? new SimpleBot { Aggression = 25, QuietSeconds = 75 }
+                                    : new SimpleBot { Aggression = t == EnemyTeam ? GameSession.BotAggression + p * 5 : 55 + p * 10 };
                     }
                 }
             }
+            _topPx = Net == null && GameSession.Tutorial ? 150f : 56f;
             var lane = Sim.Lanes[0].Cfg;
             float gap = lane.Map.W + 1.5f;   // 나란히: 내 맵 왼쪽, 상대 맵 오른쪽
             _enemyLane = new LaneRenderer(transform, Sim.OwnLane(EnemyTeam), new Vector2(gap, 0), false, "상대 진영 (내가 보낸 유닛)" + TeamNames(EnemyTeam));
-            _myLane = new LaneRenderer(transform, Sim.OwnLane(MyTeam), Vector2.zero, true, "내 진영 · 빈 칸 클릭: 짓기 · 타워 클릭: 강화/합성" + (Sim.Cfg.SharedTowers ? " · 타워 공유 모드" : PlayersPerTeam > 1 ? " · 각자 타워" : "") + TeamNames(MyTeam));
+            _myLane = new LaneRenderer(transform, Sim.OwnLane(MyTeam), Vector2.zero, true, "내 진영 · 빈 칸 클릭: 짓기 · 타워 클릭: 강화/합성" + (Sim.Cfg.SharedTowers ? " · 타워 공유 모드" : PlayersPerTeam > 1 ? " · 각자 타워" : GameSession.Tutorial && Net == null ? " · 튜토리얼" : "") + TeamNames(MyTeam));
             _myLane.LocalPlayer = _enemyLane.LocalPlayer = MyPlayer;
             _myLane.Banner += t => ShowBanner(t);
             _myLane.PlaySounds = _enemyLane.PlaySounds = !BotPlaysHuman || !Application.isBatchMode;
             BuildCamera(lane, gap);
+            Guide?.Destroy(); Guide = null; _coach = null;
+            if (Net == null && GameSession.Tutorial)
+            {
+                var targets = new Dictionary<string, Rect>
+                {
+                    ["shop"] = new Rect(574, 530, 450, 66), ["draw"] = new Rect(16, 654, 110, 34), ["hand"] = new Rect(16, 530, 540, 118), ["xp"] = new Rect(132, 654, 186, 34),
+                };
+                Guide = new TutorialGuide(_ui, Sim, MyTeam, MyPlayer, targets, () => ShowMsg("튜토리얼을 건너뜁니다"));
+                Guide.OnFinished = () =>
+                {
+                    ProfileStore.Current.TutorialDone = true;
+                    if (!GameSession.NoSave) ProfileStore.Save();
+                    ShowBanner("튜토리얼 완료! 이제 자유롭게 — 타이틀에서 혼자 하기나 온라인으로", 5f);
+                };
+            }
+            else if (!BotPlaysHuman && ProfileStore.Current.Tips) _coach = new CoachTips(Sim, MyTeam, MyPlayer, text => ShowMsg(text, 5f));
             _pending.Clear();
             _accumulator = 0; _paused = false; _bannerLeft = 0; _lastHandVersion = -1; _lastOfferVersion = -1; _lastActionVersion = -1; _selectedTower = -1; _ended = false; _menuOpen = false;
             if (_resultPanel != null) _resultPanel.gameObject.SetActive(false);
             if (_menuPanel != null) _menuPanel.gameObject.SetActive(false);
             Sfx.Music("bgm_battle");
             RefreshHud(); BuildHand(); RefreshShop();
-            ShowMsg("타워를 골라 경로 옆 빈 칸에 짓고(굽이 안쪽이 효율적), [뽑기]로 뽑은 유닛을 보내 상대를 압박하세요. 같은 타워 3개는 합쳐서 ★2!", 8f);
+            if (Guide == null) ShowMsg("타워를 골라 경로 옆 빈 칸에 짓고(굽이 안쪽이 효율적), [뽑기]로 뽑은 유닛을 보내 상대를 압박하세요. 같은 타워 3개는 합쳐서 ★2!", 8f);
         }
 
         public void FastForward(float seconds)
@@ -186,6 +223,7 @@ namespace LaneBattle.Game
             if (_bannerLeft > 0) { _bannerLeft -= dt; if (_bannerLeft <= 0) _banner.text = ""; }
             if (_msgLeft > 0) { _msgLeft -= dt; if (_msgLeft <= 0) _msg.text = ""; }
             RefreshHud();
+            if (!Sim.IsOver && running) { Guide?.Tick(dt); _coach?.Tick(dt); }
             if (HandVersion() != _lastHandVersion) BuildHand();
             if (OfferVersion() != _lastOfferVersion) BuildAugmentPanel();
             if (ActionVersion() != _lastActionVersion) BuildActionPanel();
@@ -209,9 +247,25 @@ namespace LaneBattle.Game
                 Sim.Step(_pending);
                 _pending.Clear();
             }
+            if (Sim.Tick % 5 == 0) UpdateActionFlags();
             _myLane.AfterStep(); _enemyLane.AfterStep();
             foreach (var ev in Sim.Events) HandleMatchEvent(ev);
             return true;
+        }
+
+        /// <summary>내 타워 위 R·C 표시: 지금 합성/★합치기가 되는 타워.</summary>
+        void UpdateActionFlags()
+        {
+            _myLane.ActionFlags.Clear();
+            if (BotPlaysHuman) return;
+            foreach (var t in Sim.OwnLane(MyTeam).Towers)
+            {
+                if (!t.Alive || t.BuildLeft > 0 || !Sim.CanUse(t, MyPlayer)) continue;
+                int f = 0;
+                if (t.Star < 3 && Sim.MergeCandidates(MyTeam, t).Count >= 2) f |= 1;
+                if (Sim.FuseOptions(MyTeam, t).Count > 0) f |= 2;
+                if (f != 0) _myLane.ActionFlags[t.Id] = f;
+            }
         }
 
         string TeamNames(int team)
@@ -229,6 +283,7 @@ namespace LaneBattle.Game
         void HandleMatchEvent(MatchEvent ev)
         {
             bool mine = ev.Team == MyTeam && ev.Player == MyPlayer;
+            Guide?.OnEvent(ev); _coach?.OnEvent(ev);
             switch (ev.Type)
             {
                 case MatchEventType.Sent:
@@ -491,6 +546,7 @@ namespace LaneBattle.Game
             _msgLeft = 0; _msg.text = "";
         }
         public void Draw() { if (!Sim.IsOver) _pending.Add(MatchCommand.Draw(MyTeam, MyPlayer)); }
+        public void Build(int towerId, int col, int row) { if (!Sim.IsOver) _pending.Add(MatchCommand.Build(MyTeam, MyPlayer, towerId, col, row)); }
         public void SendCard(int handIndex) { if (!Sim.IsOver) _pending.Add(MatchCommand.Send(MyTeam, MyPlayer, handIndex)); }
         public void PickAugment(int index) { _pending.Add(MatchCommand.PickAugment(MyTeam, MyPlayer, index)); }
         public void Upgrade() { if (_selectedTower >= 0) _pending.Add(MatchCommand.Upgrade(MyTeam, MyPlayer, _selectedTower)); }
@@ -580,7 +636,7 @@ namespace LaneBattle.Game
             var map = lane.Map;
             float totalH = map.H + 1.6f;                          // 맵 + 제목 여백
             float totalW = gap + map.W + 1.0f;                    // 두 맵 나란히
-            const float topPx = 56f, bottomPx = 500f;             // 맵이 들어갈 화면 세로 구간 (720 기준)
+            float topPx = _topPx; const float bottomPx = 500f;   // 맵이 들어갈 화면 세로 구간 (720 기준)
             float lanePx = bottomPx - topPx;
             float unitsPerPixelH = totalH / lanePx;
             float unitsPerPixelW = totalW / 1280f;
@@ -930,7 +986,9 @@ namespace LaneBattle.Game
             };
             foreach (var t in my.Towers) if (t.Alive && t.Owner == MyPlayer && t.Star > summary.MaxStar) summary.MaxStar = t.Star;
             var profile = ProfileStore.Current;
-            var fresh = profile.Apply(summary);
+            bool tutorialMatch = Net == null && GameSession.Tutorial;
+            if (tutorialMatch) { Guide?.Skip(); profile.TutorialDone = true; }
+            var fresh = tutorialMatch ? new List<LaneBattle.Core.Meta.UnlockDef>() : profile.Apply(summary);   // 튜토리얼은 전적·해금에 안 넣는다
             if (!GameSession.NoSave) ProfileStore.Save();
             if (fresh.Count > 0)
             {
@@ -939,7 +997,7 @@ namespace LaneBattle.Game
                 UiKit.Label(r, "Unlock", 20, 262, 560, 36, sb.ToString(), 13, TextAnchor.MiddleCenter, UiKit.Gold);
                 Sfx.Play("mission", 0.9f);
             }
-            UiKit.Label(r, "Record", 0, 298, 600, 20, $"전적 {profile.Wins}승 {profile.Matches - profile.Wins}패" + (profile.Title.Length > 0 ? $" · 칭호 {profile.Title}" : ""), 12, TextAnchor.MiddleCenter, new Color(0.8f, 0.8f, 0.9f));
+            UiKit.Label(r, "Record", 0, 298, 600, 20, tutorialMatch ? "튜토리얼 판은 전적에 들어가지 않습니다 — 이제 [혼자 하기]로!" : $"전적 {profile.Wins}승 {profile.Matches - profile.Wins}패" + (profile.Title.Length > 0 ? $" · 칭호 {profile.Title}" : ""), 12, TextAnchor.MiddleCenter, new Color(0.8f, 0.8f, 0.9f));
             if (Net == null) UiKit.SpriteButton(r, "Again", 120, 320, 170, 40, "다시 하기", () => { Seed++; Restart(); }, "ui_button_green", 15);
             UiKit.SpriteButton(r, "Title", Net == null ? 310 : 215, 320, 170, 40, "타이틀로", () => OnExit?.Invoke(), "ui_button_grey", 15);
         }
@@ -1013,7 +1071,13 @@ namespace LaneBattle.Game
         void RefreshHud()
         {
             if (_time == null || Sim == null) return;
-            _mission.text = MissionText(); _synergy.text = SynergyText(); _eventText.text = EventText(); _intel.text = IntelText(); _team.text = TeamText();
+            if (Guide != null)
+            {   // 튜토리얼: 미션·이벤트 대신 단축키 요약
+                _mission.text = "단축키: D 뽑기 · F 레벨업 · 카드 위 W 보내기\nB 건설 목록 → Q W E R A S D F G\n타워 위 R 합성 · C ★합치기 · E 판매\nESC 취소/메뉴 · 스페이스 정지 · 1 2 3 배속";
+                _synergy.text = ""; _eventText.text = "";
+            }
+            else { _mission.text = MissionText(); _synergy.text = SynergyText(); _eventText.text = EventText(); }
+            _intel.text = IntelText(); _team.text = TeamText();
             RefreshAugmentTitle();
             var p = Sim.Player(MyTeam, MyPlayer);
             var my = Sim.OwnLane(MyTeam); var en = Sim.OwnLane(EnemyTeam);

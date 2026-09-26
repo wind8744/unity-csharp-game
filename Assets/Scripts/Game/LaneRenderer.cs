@@ -18,6 +18,8 @@ namespace LaneBattle.Game
         public bool PlaySounds = true;
         public int SelectedTowerId = -1;
         public int LocalPlayer = 0;          // 이 사람의 자리 번호 (다른 주인 타워엔 P번호 표시)
+        /// <summary>타워 id → 지금 할 수 있는 것 (1 = ★합치기 C, 2 = 합성 R). MatchView 가 스텝마다 채운다.</summary>
+        public readonly Dictionary<int, int> ActionFlags = new Dictionary<int, int>();
         public int TowerVisualCount => _towers.Count;   // 테스트: 살아 있는 타워 수와 같아야 한다
 
         readonly Transform _root, _fxRoot;
@@ -46,6 +48,7 @@ namespace LaneBattle.Game
         {
             public Tower Tower; public Transform Root, BodyRoot; public SpriteRenderer Body, Shadow, Star, Badge, BuildBar, BuildBack, Silence, Owner;
             public Sprite Idle0, Idle1, Attack; public float AttackLeft, Clock; public bool WasBuilding = true; public TextMesh OwnerLabel;
+            public SpriteRenderer BadgeCBg, BadgeRBg; public TextMesh BadgeC, BadgeR;   // 지금 할 수 있는 것: C ★합치기, R 합성
         }
         sealed class Projectile { public Transform T; public Vector3 From, To; public float Age, Life, Arc; public bool Spin; public float SplashScale; }
         sealed class FxAnim { public SpriteRenderer R; public Sprite[] Frames; public float Age, FrameTime; public Vector3 Drift; public bool Fade; }
@@ -502,6 +505,26 @@ namespace LaneBattle.Game
             if (t.Star >= 2) v.Star.sprite = Art.Get(t.Star >= 3 ? "star_3" : "star_2");
             v.Badge.enabled = t.Upgraded;
             v.Silence.enabled = t.SilenceLeft > 0;
+            int flags = ActionFlags.TryGetValue(t.Id, out var f) ? f : 0;
+            ActionBadge(v, ref v.BadgeCBg, ref v.BadgeC, "C", (flags & 1) != 0, new Vector3(-0.36f, 0.44f, 0), new Color(0.55f, 0.95f, 1f));
+            ActionBadge(v, ref v.BadgeRBg, ref v.BadgeR, "R", (flags & 2) != 0, new Vector3(0.36f, 0.44f, 0), new Color(1f, 0.85f, 0.3f));
+        }
+
+        /// <summary>글자 배지 (검은 네모 + 글자). 필요할 때 만들고, 켜져 있으면 살짝 커졌다 작아진다.</summary>
+        void ActionBadge(TowerVisual v, ref SpriteRenderer bg, ref TextMesh label, string text, bool on, Vector3 pos, Color color)
+        {
+            if (!on) { if (bg != null) { bg.enabled = false; label.gameObject.SetActive(false); } return; }
+            if (bg == null)
+            {
+                bg = Square(v.Root, "Badge" + text, 0.3f, 0.3f, new Color(0.05f, 0.05f, 0.08f, 0.85f), 8);
+                bg.transform.localPosition = pos;
+                label = TextLabel(v.Root, text, 0.075f, pos + new Vector3(0, 0.01f, -0.01f), TextAnchor.MiddleCenter, 9);
+                label.color = color;
+            }
+            float k = 1f + 0.12f * Mathf.Sin(v.Clock * 5f);
+            bg.enabled = true; label.gameObject.SetActive(true);
+            bg.transform.localScale = new Vector3(0.3f * k, 0.3f * k, 1);
+            label.transform.localScale = Vector3.one * k;
         }
 
         // ─────────────────────────── 바닥 ───────────────────────────
