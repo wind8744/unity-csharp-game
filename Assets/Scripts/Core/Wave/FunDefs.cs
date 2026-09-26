@@ -8,6 +8,7 @@ namespace LaneBattle.Core.Wave
         Elite, Venom, AirNet, Fortress,                   // 강화
         Curse, Corrosion, SilenceShell,                   // 방해
         Scout, Wiretap, Accountant,                       // 정보
+        StarBlessing, Alchemy, Veteran,                   // 비밀 (해금해야 나온다, 문서 v0.4 11절)
     }
 
     public enum EventId { Night, Storm, GoldenAge, Express, Fog, Bazaar, Earthquake }
@@ -17,6 +18,7 @@ namespace LaneBattle.Core.Wave
     public static class FunCatalog
     {
         public static readonly AugmentId[] Augments = (AugmentId[])System.Enum.GetValues(typeof(AugmentId));
+        public static bool IsSecret(AugmentId a) => a >= AugmentId.StarBlessing;
         public static readonly EventId[] Events = (EventId[])System.Enum.GetValues(typeof(EventId));
         public static readonly MissionId[] Missions = (MissionId[])System.Enum.GetValues(typeof(MissionId));
 
@@ -25,10 +27,11 @@ namespace LaneBattle.Core.Wave
             AugmentId.Merchant => "상인", AugmentId.Interest => "이자", AugmentId.Mercenaries => "용병단", AugmentId.Legacy => "유산",
             AugmentId.Elite => "정예", AugmentId.Venom => "맹독", AugmentId.AirNet => "대공망", AugmentId.Fortress => "요새",
             AugmentId.Curse => "저주", AugmentId.Corrosion => "부식", AugmentId.SilenceShell => "침묵탄",
-            AugmentId.Scout => "정찰", AugmentId.Wiretap => "감청", _ => "회계",
+            AugmentId.Scout => "정찰", AugmentId.Wiretap => "감청", AugmentId.Accountant => "회계",
+            AugmentId.StarBlessing => "별의 축복", AugmentId.Alchemy => "연금술", _ => "노련함",
         };
 
-        public static string AugmentGroup(AugmentId a) => (int)a switch { < 4 => "자원", < 8 => "강화", < 11 => "방해", _ => "정보" };
+        public static string AugmentGroup(AugmentId a) => (int)a switch { < 4 => "자원", < 8 => "강화", < 11 => "방해", < 14 => "정보", _ => "비밀" };
 
         public static string AugmentDesc(AugmentId a) => a switch
         {
@@ -45,7 +48,10 @@ namespace LaneBattle.Core.Wave
             AugmentId.SilenceShell => "5초 안에 연달아 보낸 무리의 첫 유닛이 등장 시 타워 1.5초 침묵",
             AugmentId.Scout => "상대 손패 2장이 보인다",
             AugmentId.Wiretap => "상대 팀의 핑이 보인다",
-            _ => "상대 골드 잔액이 보인다",
+            AugmentId.Accountant => "상대 골드 잔액이 보인다",
+            AugmentId.StarBlessing => "★2 이상 타워 공격 +10%",
+            AugmentId.Alchemy => "합치기·합성 결과가 즉시 강화 상태",
+            _ => "뽑기 비용 -1, 손패 최대 +1",
         };
 
         public static string EventName(EventId e) => e switch

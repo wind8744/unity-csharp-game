@@ -1,4 +1,6 @@
 using System.Collections.Generic;
+using System.Linq;
+using LaneBattle.Core.Meta;
 using LaneBattle.Core.Wave;
 using UnityEngine;
 using UnityEngine.UI;
@@ -48,10 +50,58 @@ namespace LaneBattle.Game
             UiKit.SpriteButton(_ui, "Recipes", 646, 532, 164, 40, "합성표", ShowRecipes, "ui_button_grey", 14);
             UiKit.SpriteButton(_ui, "Sound", 470, 580, 164, 40, "소리 설정", ShowSound, "ui_button_grey", 14);
             UiKit.SpriteButton(_ui, "Quit", 646, 580, 164, 40, "종료", () => Application.Quit(), "ui_button_grey", 14);
-            UiKit.OutlinedLabel(_ui, "Ver", 0, 690, 1270, 20, $"쪼꼬미 공성전 v0.5 · 전적 {GameSession.Wins}승 {GameSession.MatchesPlayed - GameSession.Wins}패", 11, TextAnchor.MiddleRight, new Color(1, 1, 1, 0.85f));
+            var profile = ProfileStore.Current;
+            UiKit.SpriteButton(_ui, "Codex", 860, 322, 150, 40, $"해금 도감 {profile.Unlocks.Count}/{Profile.Catalog.Length}", ShowCodex, "ui_button", 13);
+            BuildOptions(profile);
+            UiKit.OutlinedLabel(_ui, "Ver", 0, 690, 1270, 20, $"쪼꼬미 공성전 v0.8 · 전적 {profile.Wins}승 {profile.Matches - profile.Wins}패" + (profile.Title.Length > 0 ? $" · 칭호 [{profile.Title}]" : ""), 11, TextAnchor.MiddleRight, new Color(1, 1, 1, 0.85f));
             _popup = UiKit.SpritePanel(_ui, "Popup", 190, 60, 900, 600, "ui_panel").transform;
             _popup.gameObject.SetActive(false);
             Sfx.Music("bgm_title");
+        }
+
+        Transform _options;
+        bool _argsDone;
+
+        /// <summary>해금한 것이 있을 때만 보이는 선택지: 맵, 봇 난이도.</summary>
+        void BuildOptions(Profile profile)
+        {
+            if (_options == null) _options = UiKit.Rect(_ui, "Options", 860, 370, 200, 200);
+            UiKit.Clear(_options);
+            var maps = profile.UnlockedMaps();
+            if (maps.Count == 0 && !profile.HardBotUnlocked) return;
+            UiKit.SpritePanel(_options, "Bg", 0, 0, 200, 60 + (maps.Count > 0 ? 34 * (maps.Count + 1) : 0) + (profile.HardBotUnlocked ? 40 : 0), "ui_panel");
+            float y = 10;
+            if (maps.Count > 0)
+            {
+                UiKit.Label(_options, "MapL", 10, y, 180, 20, "맵 (혼자 하기 1v1)", 12, TextAnchor.MiddleLeft, UiKit.Ink); y += 22;
+                foreach (var name in new[] { "" }.Concat(maps))
+                {
+                    string n = name; bool sel = GameSession.MapName == n;
+                    UiKit.SpriteButton(_options, "Map" + n, 10, y, 180, 30, n == "" ? "기본 (굽이 셋)" : n, () => { GameSession.MapName = n; BuildOptions(profile); }, sel ? "ui_button_green" : "ui_button_grey", 12); y += 34;
+                }
+            }
+            if (profile.HardBotUnlocked)
+            {
+                UiKit.SpriteButton(_options, "Bot", 10, y + 4, 180, 30, GameSession.HardBot ? "봇: 고수 (해금)" : "봇: 보통", () => { GameSession.HardBot = !GameSession.HardBot; BuildOptions(profile); }, GameSession.HardBot ? "ui_button" : "ui_button_grey", 12);
+            }
+        }
+
+        void ShowCodex()
+        {
+            OpenPopup("해금 도감 — 조건은 비밀. 여러 판에 걸쳐 저절로 열립니다");
+            var profile = ProfileStore.Current;
+            int i = 0;
+            foreach (var u in Profile.Catalog)
+            {
+                bool open = profile.Has(u.Id);
+                float x = 40 + (i % 2) * 420, y = 60 + (i / 2) * 92;
+                UiKit.SpritePanel(_popup, "U" + i, x, y, 400, 84, open ? "ui_panel_dark" : "ui_slot");
+                UiKit.Icon(_popup, "I" + i, x + 12, y + 26, 32, open ? "icon_check" : "icon_lock");
+                string kind = u.Kind switch { UnlockKind.Title => "칭호", UnlockKind.Map => "맵", UnlockKind.Augment => "비밀 증강", _ => "봇" };
+                UiKit.Label(_popup, "N" + i, x + 56, y + 8, 330, 22, open ? $"{u.Name}  [{kind}]" : $"???  [{kind}]", 15, TextAnchor.MiddleLeft, open ? UiKit.Gold : UiKit.Ink);
+                UiKit.Label(_popup, "D" + i, x + 56, y + 32, 330, 46, open ? u.Reward : "힌트: " + u.Hint, 12, TextAnchor.UpperLeft, open ? Color.white : UiKit.InkSoft);
+                i++;
+            }
         }
 
         void OnDestroy() { if (_ui != null) Destroy(_ui.gameObject); }
@@ -71,6 +121,7 @@ namespace LaneBattle.Game
             }
             var kb = UnityEngine.InputSystem.Keyboard.current;
             if (kb != null && kb.escapeKey.wasPressedThisFrame && _popup.gameObject.activeSelf) _popup.gameObject.SetActive(false);
+            if (!_argsDone) { _argsDone = true; foreach (var a in System.Environment.GetCommandLineArgs()) if (a == "-codex") ShowCodex(); }
         }
 
         void OpenPopup(string title)

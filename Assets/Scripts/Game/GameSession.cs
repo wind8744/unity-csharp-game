@@ -10,5 +10,8 @@ namespace LaneBattle.Game
         public static string PlayerName = "나";
         public static int MatchesPlayed;
         public static int Wins;
+        public static string MapName = "";  // 빈 값이면 인원수 기본 맵. 해금한 맵 이름이면 그 맵 (오프라인만)
+        public static bool HardBot;         // 해금한 고수 봇
+        public static bool NoSave;          // 스크린샷·테스트: 프로필 저장 안 함
     }
 }

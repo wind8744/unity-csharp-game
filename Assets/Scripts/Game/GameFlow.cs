@@ -20,6 +20,8 @@ namespace LaneBattle.Game
                 if (args[i] == "-title") titleShot = true;
                 if (args[i] == "-online") online = true;
                 if (args[i] == "-host") autoHost = true;
+                if (args[i] == "-nosave") GameSession.NoSave = true;
+                if (args[i] == "-demo-profile") { var p = new LaneBattle.Core.Meta.Profile(); p.Apply(new LaneBattle.Core.Meta.MatchSummary { Win = true, MyLeaked = 0, MaxStar = 3, Sent = 70 }); ProfileStore.UseTransient(p); GameSession.NoSave = true; }
                 if (args[i] == "-screenshot" && i + 1 < args.Length) shot = args[i + 1];
             }
             if (mode > 0) StartMatch(mode);

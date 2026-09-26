@@ -28,6 +28,7 @@ namespace LaneBattle.Core.Wave
         public int EventDurationSeconds = 60;
         public int EventWarnSeconds = 30;
         public bool FunLayer = true;                  // 증강·이벤트·미션·시너지 켜기
+        public HashSet<AugmentId> AllowedSecretAugments; // 해금한 비밀 증강 (null 이면 없음)
 
         // 인원수별 기본값 (봇 스윕으로 결정, 문서 v0.4 3·8절): 기지 40/120/360, 웨이브 100/130/130%
         public MapDef Map => MapOverride ?? MapCatalog.ForPlayers(PlayersPerTeam);
@@ -55,10 +56,13 @@ namespace LaneBattle.Core.Wave
         public MissionId Mission;
         public bool MissionDone;
         public int FreeSends;
+        public int MaxStar = 1;                      // 해금 조건용
+        public HashSet<int> FusedKinds = new HashSet<int>();
         public List<int> RecentSendTicks = new List<int>();
         public List<int> RecentHeroSendTicks = new List<int>();
         public bool Has(AugmentId a) => Augments.Contains(a);
-        public int DrawCost(MatchConfig cfg) => Has(AugmentId.Merchant) ? 3 : cfg.DrawCost;
+        public int DrawCost(MatchConfig cfg) => Math.Max(1, (Has(AugmentId.Merchant) ? 3 : cfg.DrawCost) - (Has(AugmentId.Veteran) ? 1 : 0));
+        public int HandMax(MatchConfig cfg) => cfg.HandMax + (Has(AugmentId.Veteran) ? 1 : 0);
     }
 
     public sealed class TeamEcon
@@ -234,7 +238,12 @@ namespace LaneBattle.Core.Wave
         {
             p.Offers.Clear();
             var pool = new List<AugmentId>();
-            foreach (var a in FunCatalog.Augments) if (!p.Has(a)) pool.Add(a);
+            foreach (var a in FunCatalog.Augments)
+            {
+                if (p.Has(a)) continue;
+                if (FunCatalog.IsSecret(a) && (Cfg.AllowedSecretAugments == null || !Cfg.AllowedSecretAugments.Contains(a))) continue;
+                pool.Add(a);
+            }
             for (int i = 0; i < 3 && pool.Count > 0; i++) { var a = pool[_rng.Next(pool.Count)]; pool.Remove(a); p.Offers.Add(a); }
             Emit(MatchEventType.AugmentOffer, p.Team, p.Index, p.Offers.Count, 0);
         }
@@ -259,6 +268,7 @@ namespace LaneBattle.Core.Wave
                 case AugmentId.Fortress: lane.AddBaseHp(8); break;
                 case AugmentId.Elite: foreach (var t in lane.Towers) if (t.Alive && t.Owner == p.Index) t.UpgradePercent = 80; break;
                 case AugmentId.AirNet: foreach (var t in lane.Towers) if (t.Alive && t.Owner == p.Index) t.ForceAntiAir = true; break;
+                case AugmentId.StarBlessing: foreach (var t in lane.Towers) if (t.Alive && t.Owner == p.Index) t.StarBlessed = true; break;
             }
             Emit(MatchEventType.AugmentPicked, p.Team, p.Index, (int)a, 0);
         }
@@ -391,6 +401,7 @@ namespace LaneBattle.Core.Wave
                     p.Gold -= def.Cost;
                     if (p.Has(AugmentId.Elite)) t.UpgradePercent = 80;
                     if (p.Has(AugmentId.AirNet)) t.ForceAntiAir = true;
+                    if (p.Has(AugmentId.StarBlessing)) t.StarBlessed = true;
                     Emit(MatchEventType.Built, c.Team, c.Player, t.Id, def.Id);
                     break;
                 }
@@ -416,6 +427,9 @@ namespace LaneBattle.Core.Wave
                     if (r == null) { Reject(c); return; }
                     if (p.Has(AugmentId.Elite)) r.UpgradePercent = 80;
                     if (p.Has(AugmentId.AirNet)) r.ForceAntiAir = true;
+                    if (p.Has(AugmentId.StarBlessing)) r.StarBlessed = true;
+                    if (p.Has(AugmentId.Alchemy)) r.Upgraded = true;
+                    if (r.Star > p.MaxStar) p.MaxStar = r.Star;
                     Emit(MatchEventType.Merged, c.Team, c.Player, r.Id, r.Star);
                     break;
                 }
@@ -427,6 +441,9 @@ namespace LaneBattle.Core.Wave
                     if (r == null) { Reject(c); return; }
                     if (p.Has(AugmentId.Elite)) r.UpgradePercent = 80;
                     if (p.Has(AugmentId.AirNet)) r.ForceAntiAir = true;
+                    if (p.Has(AugmentId.StarBlessing)) r.StarBlessed = true;
+                    if (p.Has(AugmentId.Alchemy)) r.Upgraded = true;
+                    p.FusedKinds.Add(r.Def.Id);
                     Emit(MatchEventType.Fused, c.Team, c.Player, r.Id, r.Def.Id);
                     break;
                 }
@@ -442,7 +459,7 @@ namespace LaneBattle.Core.Wave
                 }
                 case CommandType.Draw:
                 {
-                    if (p.Gold < p.DrawCost(Cfg) || p.Hand.Count >= Cfg.HandMax) { Reject(c); return; }
+                    if (p.Gold < p.DrawCost(Cfg) || p.Hand.Count >= p.HandMax(Cfg)) { Reject(c); return; }
                     p.Gold -= p.DrawCost(Cfg);
                     var def = RollAttacker(p.DrawRng);
                     p.Hand.Add(def.Id);

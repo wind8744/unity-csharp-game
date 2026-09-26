@@ -163,6 +163,12 @@ namespace LaneBattle.Core.Wave
         /// <summary>3v3: 22×12, 가로 4줄 (더 길다).</summary>
         public static readonly MapDef ThreeVsThree = MapDef.Snake("긴 굽이 넷", 22, 12, 4);
 
+        /// <summary>해금 맵: 짧고 빠른 두 굽이, 긴 다섯 굽이.</summary>
+        public static readonly MapDef TwoBends = MapDef.Snake("굽이 둘", 14, 6, 2);
+        public static readonly MapDef FiveBends = MapDef.Snake("굽이 다섯", 14, 15, 5);
+
         public static MapDef ForPlayers(int playersPerTeam) => playersPerTeam switch { 1 => OneVsOne, 2 => TwoVsTwo, _ => ThreeVsThree };
+        public static readonly MapDef[] All = { OneVsOne, TwoVsTwo, ThreeVsThree, TwoBends, FiveBends };
+        public static MapDef ByName(string name) { foreach (var m in All) if (m.Name == name) return m; return null; }
     }
 }
