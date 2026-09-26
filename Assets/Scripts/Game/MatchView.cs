@@ -37,7 +37,7 @@ namespace LaneBattle.Game
         Image _myHpBar, _enemyHpBar;
         Button _sendUp, _xpBtn, _handFuseBtn; Text _drawInfo, _levelText;
         // 건설 (스타 방식): B → 목록, 단축키/클릭 → 커서에 타워 그림(고스트) → 빈 칸 클릭
-        SpriteRenderer _ghost; int _ghostTowerId = -1; Transform _buildMenu; bool _buildMenuOpen; int _hoveredCard = -1;
+        SpriteRenderer _ghost; int _ghostTowerId = -1; Transform _buildMenu; bool _buildMenuOpen; int _hoveredCard = -1, _hoveredTower = -1;
         static readonly (Key key, string label)[] BuildKeys = { (Key.Q, "Q"), (Key.W, "W"), (Key.E, "E"), (Key.R, "R"), (Key.A, "A"), (Key.S, "S"), (Key.D, "D"), (Key.F, "F"), (Key.G, "G") };
         readonly List<Button> _shopButtons = new List<Button>();
         readonly List<Image> _shopImages = new List<Image>();
@@ -342,25 +342,28 @@ namespace LaneBattle.Game
                     if (kb.dKey.wasPressedThisFrame) Draw();
                     if (kb.fKey.wasPressedThisFrame) BuyXp();
                     if (kb.wKey.wasPressedThisFrame && _hoveredCard >= 0) SendCard(_hoveredCard);
-                    if (kb.rKey.wasPressedThisFrame) HandFuse();
                     if (kb.bKey.wasPressedThisFrame) ToggleBuildMenu();
-                    if (_selectedTower >= 0 && _pick == PickMode.None)
+                    // 롤토체스식: 커서를 올린 대상에 바로. R 합성(타워·손패 공통), C ★합치기, U 강화, E 판매
+                    int target = _hoveredTower >= 0 ? _hoveredTower : -1;
+                    if (kb.rKey.wasPressedThisFrame) { if (target >= 0 && _pick == PickMode.None) FuseHotkey(target); else HandFuse(); }
+                    if (target >= 0 && _pick == PickMode.None)
                     {
-                        if (kb.uKey.wasPressedThisFrame) Upgrade();
-                        if (kb.xKey.wasPressedThisFrame) Sell();
-                        if (kb.cKey.wasPressedThisFrame) MergeHotkey();
-                        if (kb.vKey.wasPressedThisFrame) FuseHotkey();
+                        if (kb.uKey.wasPressedThisFrame) _pending.Add(MatchCommand.Upgrade(MyTeam, MyPlayer, target));
+                        if (kb.eKey.wasPressedThisFrame) { _pending.Add(MatchCommand.Sell(MyTeam, MyPlayer, target)); if (_selectedTower == target) SelectTower(-1); }
+                        if (kb.cKey.wasPressedThisFrame) MergeHotkey(target);
                     }
                 }
             }
             var mouse = Mouse.current;
-            if (mouse == null || Sim.IsOver || BotPlaysHuman || Sim.IsPaused || _menuOpen || _recipeOpen) { _myLane?.SetHover(-1, -1); if (_ghost != null) _ghost.enabled = false; return; }
+            if (mouse == null || Sim.IsOver || BotPlaysHuman || Sim.IsPaused || _menuOpen || _recipeOpen) { _myLane?.SetHover(-1, -1); _hoveredTower = -1; if (_ghost != null) _ghost.enabled = false; return; }
             var cam = Camera.main; if (cam == null) return;
             var w = cam.ScreenToWorldPoint(new Vector3(mouse.position.ReadValue().x, mouse.position.ReadValue().y, 10));
             bool overUi = EventSystem.current != null && EventSystem.current.IsPointerOverGameObject();
             int col = -1, row = -1;
             bool onSlot = !overUi && _myLane.WorldToSlot(w, out col, out row);
             _myLane.SetHover(onSlot ? col : -1, onSlot ? row : -1);
+            var hoverTower = onSlot ? Sim.OwnLane(MyTeam).TowerAtCell(col, row) : null;
+            _hoveredTower = hoverTower != null && hoverTower.Owner == MyPlayer ? hoverTower.Id : -1;
             UpdateGhost(w, onSlot, col, row, overUi);
             bool left = mouse.leftButton.wasPressedThisFrame, right = mouse.rightButton.wasPressedThisFrame;
             if (!left && !right || overUi) return;
@@ -505,21 +508,23 @@ namespace LaneBattle.Game
             _pending.Add(MatchCommand.HandFuse(MyTeam, MyPlayer, want));
         }
 
-        /// <summary>C: 선택한 타워 ★ 합치기 (짝이 셋 넘으면 고르기).</summary>
-        void MergeHotkey()
+        /// <summary>C: 커서 아래 타워 ★ 합치기 (짝이 셋 넘으면 고르기).</summary>
+        void MergeHotkey(int towerId)
         {
-            var t = Sim.OwnLane(MyTeam).TowerAt(_selectedTower); if (t == null) return;
+            var t = Sim.OwnLane(MyTeam).TowerAt(towerId); if (t == null) return;
             var mates = Sim.MergeCandidates(MyTeam, t);
             if (mates.Count < 2 || t.Star >= 3) { ShowMsg("합칠 같은 타워가 부족합니다 (같은 정의·같은 별 3개)"); Sfx.Play("error", 0.4f); return; }
+            SelectTower(towerId);
             if (mates.Count > 2) BeginPick(PickMode.Merge, mates); else Merge();
         }
 
-        /// <summary>V: 선택한 타워 합성 (첫 레시피; 짝이 여럿이면 고르기).</summary>
-        void FuseHotkey()
+        /// <summary>R: 커서 아래 타워 합성 (첫 레시피; 짝이 여럿이면 고르기).</summary>
+        void FuseHotkey(int towerId)
         {
-            var t = Sim.OwnLane(MyTeam).TowerAt(_selectedTower); if (t == null) return;
+            var t = Sim.OwnLane(MyTeam).TowerAt(towerId); if (t == null) return;
             var opts = Sim.FuseOptions(MyTeam, t);
             if (opts.Count == 0) { ShowMsg("합성할 짝이 없습니다 (합성표 참고)"); Sfx.Play("error", 0.4f); return; }
+            SelectTower(towerId);
             var partners = Sim.FusePartners(MyTeam, t, opts[0].result.Id);
             if (partners.Count > 1) BeginPick(PickMode.Fuse, partners, opts[0].result.Id); else Fuse(opts[0].partnerId);
         }
@@ -734,7 +739,7 @@ namespace LaneBattle.Game
             if (t == null)
             {
                 _selectedTower = -1;
-                UiKit.Label(_actionPanel, "Hint", 0, 0, 450, 40, "내 타워를 클릭하면 강화 · 판매 · ★합치기 · 합성을 할 수 있습니다.\n같은 타워 3개 = ★2 (공격 ×2.2), 합성 조합은 [합성표] 참고. 우클릭 = 바로 판매.", 11, TextAnchor.UpperLeft, UiKit.InkSoft);
+                UiKit.Label(_actionPanel, "Hint", 0, 0, 450, 40, "타워 위에 커서를 올리고 U 강화 · E 판매 · C ★합치기 · R 합성 (클릭하면 버튼도 나옵니다).\n같은 타워 3개 = ★2 (공격 ×2.2), 합성 조합은 [합성표] 참고. 우클릭 = 바로 판매.", 11, TextAnchor.UpperLeft, UiKit.InkSoft);
                 return;
             }
             var p = Sim.Player(MyTeam, MyPlayer);
@@ -744,7 +749,7 @@ namespace LaneBattle.Game
             int upCost = Sim.UpgradeCostOf(MyTeam, t);
             var up = UiKit.SpriteButton(_actionPanel, "Up", x, 22, 110, 30, t.Upgraded ? "강화 완료" : $"[U] 강화 {upCost}골드", Upgrade, "ui_button_green", 12);
             up.interactable = !t.Upgraded && p.Gold >= upCost; x += 116;
-            UiKit.SpriteButton(_actionPanel, "Sell", x, 22, 100, 30, $"[X] 판매 +{MatchSim.SellValueOf(t)}", Sell, "ui_button_grey", 12); x += 106;
+            UiKit.SpriteButton(_actionPanel, "Sell", x, 22, 100, 30, $"[E] 판매 +{MatchSim.SellValueOf(t)}", Sell, "ui_button_grey", 12); x += 106;
             var mateIds = Sim.MergeCandidates(MyTeam, t);
             bool canMerge = mateIds.Count >= 2 && t.Star < 3;
             var mg = UiKit.SpriteButton(_actionPanel, "Merge", x, 22, 110, 30, t.Star >= 3 ? "★★★ 최대" : mateIds.Count > 2 ? $"[C] ★{t.Star + 1} 합치기 (고르기)" : $"[C] ★{t.Star + 1} 합치기",
@@ -759,7 +764,7 @@ namespace LaneBattle.Game
                 var (partner, result) = opts[i];
                 var partners = Sim.FusePartners(MyTeam, t, result.Id);
                 bool many = partners.Count > 1;
-                UiKit.SpriteButton(_actionPanel, "Fuse" + i, i * 150, fy, 146, 28, (i == 0 ? "[V] " : "") + (many ? $"합성 → {result.Name} (고르기)" : $"합성 → {result.Name}"),
+                UiKit.SpriteButton(_actionPanel, "Fuse" + i, i * 150, fy, 146, 28, (i == 0 ? "[R] " : "") + (many ? $"합성 → {result.Name} (고르기)" : $"합성 → {result.Name}"),
                     () => { if (many) BeginPick(PickMode.Fuse, partners, result.Id); else Fuse(partner); }, "ui_button_blue", many ? 10 : 11);
             }
         }
