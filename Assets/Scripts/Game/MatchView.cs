@@ -37,6 +37,8 @@ namespace LaneBattle.Game
         readonly List<Image> _shopImages = new List<Image>();
         int _lastHandVersion = -1, _lastOfferVersion = -1, _lastActionVersion = -1, _selectedTower = -1, _lastShopGold = -1;
         bool _paused, _menuOpen, _recipeOpen, _ended, _netLost;
+        enum PickMode { None, Fuse, Merge }
+        PickMode _pick; int _pickResultDef; readonly HashSet<int> _pickCandidates = new HashSet<int>(); readonly List<int> _picked = new List<int>();
         float _stallTime, _netLostAt;
         float _slowSpeed = 1f;
 
@@ -58,6 +60,7 @@ namespace LaneBattle.Game
             {
                 if (a == "-select") { foreach (var t in Sim.OwnLane(MyTeam).Towers) if (t.Alive && t.Owner == MyPlayer) { SelectTower(t.Id); break; } }
                 if (a == "-nosave") GameSession.NoSave = true;
+                if (a == "-pick") { var t = _selectedTower >= 0 ? Sim.OwnLane(MyTeam).TowerAt(_selectedTower) : null; if (t != null) { var ids = Sim.MergeCandidates(MyTeam, t); if (ids.Count > 2) BeginPick(PickMode.Merge, ids); } }
                 if (a == "-recipes") ToggleRecipes();
                 if (a == "-menu") ToggleMenu();
             }
@@ -287,7 +290,8 @@ namespace LaneBattle.Game
             var kb = Keyboard.current;
             if (kb != null && kb.escapeKey.wasPressedThisFrame)
             {
-                if (_recipeOpen) ToggleRecipes();
+                if (_pick != PickMode.None) CancelPick();
+                else if (_recipeOpen) ToggleRecipes();
                 else if (_selectedTower >= 0) SelectTower(-1);
                 else ToggleMenu();
             }
@@ -316,6 +320,12 @@ namespace LaneBattle.Game
             if (!left && !right || overUi) return;
             if (!onSlot) { if (left) SelectTower(-1); return; }
             var existing = Sim.OwnLane(MyTeam).TowerAtCell(col, row);
+            if (_pick != PickMode.None)
+            {
+                if (left && existing != null && _pickCandidates.Contains(existing.Id)) PickTower(existing.Id);
+                else if (left || right) CancelPick();
+                return;
+            }
             if (left)
             {
                 if (existing == null) { SelectTower(-1); _pending.Add(MatchCommand.Build(MyTeam, MyPlayer, SelectedTowerId, col, row)); }
@@ -325,7 +335,34 @@ namespace LaneBattle.Game
             else if (existing != null && existing.Owner == MyPlayer) { _pending.Add(MatchCommand.Sell(MyTeam, MyPlayer, existing.Id)); SelectTower(-1); }
         }
 
-        void SelectTower(int id) { _selectedTower = id; _myLane.SelectedTowerId = id; }
+        void SelectTower(int id) { if (id != _selectedTower) CancelPick(); _selectedTower = id; _myLane.SelectedTowerId = id; }
+
+        /// <summary>짝 고르기 시작: 후보 타워를 강조하고 클릭을 기다린다.</summary>
+        void BeginPick(PickMode mode, IEnumerable<int> candidates, int resultDef = 0)
+        {
+            _pick = mode; _pickResultDef = resultDef; _picked.Clear();
+            _pickCandidates.Clear(); foreach (var id in candidates) _pickCandidates.Add(id);
+            _myLane.SetHighlights(_pickCandidates);
+            ShowMsg(mode == PickMode.Fuse ? $"합성할 짝 타워를 클릭하세요 (하늘색 표시, ESC 취소)" : "합칠 타워 2개를 차례로 클릭하세요 (하늘색 표시, ESC 취소)", 6f);
+            Sfx.Play("click", 0.5f);
+        }
+
+        void PickTower(int id)
+        {
+            if (_pick == PickMode.Fuse) { _pending.Add(MatchCommand.Fuse(MyTeam, MyPlayer, _selectedTower, id)); CancelPick(); SelectTower(-1); return; }
+            _picked.Add(id); _pickCandidates.Remove(id);
+            if (_picked.Count >= 2) { _pending.Add(MatchCommand.MergeWith(MyTeam, MyPlayer, _selectedTower, _picked[0], _picked[1])); CancelPick(); SelectTower(-1); return; }
+            _myLane.SetHighlights(_pickCandidates);
+            ShowMsg("하나 더 클릭하세요", 6f);
+        }
+
+        void CancelPick()
+        {
+            if (_pick == PickMode.None) return;
+            _pick = PickMode.None; _pickCandidates.Clear(); _picked.Clear();
+            _myLane?.SetHighlights(null);
+            _msgLeft = 0; _msg.text = "";
+        }
         public void Draw() { if (!Sim.IsOver) _pending.Add(MatchCommand.Draw(MyTeam, MyPlayer)); }
         public void SendCard(int handIndex) { if (!Sim.IsOver) _pending.Add(MatchCommand.Send(MyTeam, MyPlayer, handIndex)); }
         public void PickAugment(int index) { _pending.Add(MatchCommand.PickAugment(MyTeam, MyPlayer, index)); }
@@ -364,8 +401,8 @@ namespace LaneBattle.Game
             int v = t.Id * 100 + t.Star * 10 + (t.Upgraded ? 1 : 0);
             var p = Sim.Player(MyTeam, MyPlayer);
             v = v * 7 + Mathf.Min(p.Gold, 30);
-            var mates = Sim.MergeMates(MyTeam, t); v = v * 3 + (mates.HasValue ? 1 : 0);
-            foreach (var o in Sim.FuseOptions(MyTeam, t)) v = v * 31 + o.result.Id;
+            v = v * 7 + Sim.MergeCandidates(MyTeam, t).Count;
+            foreach (var o in Sim.FuseOptions(MyTeam, t)) { v = v * 31 + o.result.Id; v = v * 5 + Sim.FusePartners(MyTeam, t, o.result.Id).Count; }
             return v;
         }
 
@@ -529,9 +566,11 @@ namespace LaneBattle.Game
             var up = UiKit.SpriteButton(_actionPanel, "Up", x, 22, 110, 30, t.Upgraded ? "강화 완료" : $"강화 {upCost}골드", Upgrade, "ui_button_green", 12);
             up.interactable = !t.Upgraded && p.Gold >= upCost; x += 116;
             UiKit.SpriteButton(_actionPanel, "Sell", x, 22, 100, 30, $"판매 +{MatchSim.SellValueOf(t)}", Sell, "ui_button_grey", 12); x += 106;
-            var mates = Sim.MergeMates(MyTeam, t);
-            var mg = UiKit.SpriteButton(_actionPanel, "Merge", x, 22, 110, 30, t.Star >= 3 ? "★★★ 최대" : $"★{t.Star + 1} 합치기", Merge, "ui_button", 12);
-            mg.interactable = mates.HasValue; x += 116;
+            var mateIds = Sim.MergeCandidates(MyTeam, t);
+            bool canMerge = mateIds.Count >= 2 && t.Star < 3;
+            var mg = UiKit.SpriteButton(_actionPanel, "Merge", x, 22, 110, 30, t.Star >= 3 ? "★★★ 최대" : mateIds.Count > 2 ? $"★{t.Star + 1} 합치기 (고르기)" : $"★{t.Star + 1} 합치기",
+                () => { if (mateIds.Count > 2) BeginPick(PickMode.Merge, mateIds); else Merge(); }, "ui_button", mateIds.Count > 2 ? 10 : 12);
+            mg.interactable = canMerge; x += 116;
             var opts = Sim.FuseOptions(MyTeam, t);
             float fy = 56;
             if (opts.Count == 0)
@@ -539,8 +578,10 @@ namespace LaneBattle.Game
             for (int i = 0; i < opts.Count && i < 3; i++)
             {
                 var (partner, result) = opts[i];
-                var partnerTower = Sim.OwnLane(MyTeam).TowerAt(partner);
-                UiKit.SpriteButton(_actionPanel, "Fuse" + i, i * 150, fy, 146, 28, $"합성 → {result.Name}", () => Fuse(partner), "ui_button_blue", 11);
+                var partners = Sim.FusePartners(MyTeam, t, result.Id);
+                bool many = partners.Count > 1;
+                UiKit.SpriteButton(_actionPanel, "Fuse" + i, i * 150, fy, 146, 28, many ? $"합성 → {result.Name} (고르기)" : $"합성 → {result.Name}",
+                    () => { if (many) BeginPick(PickMode.Fuse, partners, result.Id); else Fuse(partner); }, "ui_button_blue", many ? 10 : 11);
             }
         }
 

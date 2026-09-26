@@ -28,6 +28,7 @@ namespace LaneBattle.Game
         readonly Stack<TextMesh> _popupPool = new Stack<TextMesh>();
         readonly Dictionary<(int, int), SpriteRenderer> _slots = new Dictionary<(int, int), SpriteRenderer>();
         SpriteRenderer _base, _gate, _hoverSlot, _selectSlot, _rangeRing;
+        readonly List<SpriteRenderer> _highlights = new List<SpriteRenderer>();
         Transform _baseRoot;
         Vector3 _baseAnchor;
         float _baseShake, _baseFlash, _time;
@@ -94,6 +95,23 @@ namespace LaneBattle.Game
         }
 
         public Vector3 SlotCenter(int x, int y, float z = 0) => W(x + 0.5f, y + 0.5f, z);
+
+        /// <summary>고를 수 있는 타워들을 하늘색 테두리로 표시 (짝 고르기). 빈 목록이면 지운다.</summary>
+        public void SetHighlights(IEnumerable<int> towerIds)
+        {
+            foreach (var h in _highlights) if (h != null) UnityEngine.Object.Destroy(h.gameObject);
+            _highlights.Clear();
+            if (towerIds == null) return;
+            foreach (var id in towerIds)
+            {
+                var t = Sim.TowerAt(id);
+                if (t == null) continue;
+                var sr = Sprite(_fxRoot, "Pick", Art.Get("tile_slot_hover"), new Color(0.55f, 0.9f, 1f), 2);
+                sr.transform.position = SlotCenter(t.Cx, t.Cy, 0.4f);
+                sr.transform.localScale = Vector3.one * 1.9f;
+                _highlights.Add(sr);
+            }
+        }
         public Vector3 TowerWorld(Tower t) => W(t.X / 1000f, t.Y / 1000f);
 
         // ─────────────────────────── 매 프레임 ───────────────────────────
@@ -155,6 +173,7 @@ namespace LaneBattle.Game
                 _baseRoot.position = _baseAnchor + new Vector3(UnityEngine.Random.Range(-0.06f, 0.06f), UnityEngine.Random.Range(-0.04f, 0.04f), 0) * Mathf.Clamp01(_baseShake * 3);
                 if (_baseShake <= 0) _baseRoot.position = _baseAnchor;
             }
+            if (_highlights.Count > 0) { float a = 0.6f + 0.4f * Mathf.Sin(_time * 8f); foreach (var h in _highlights) if (h != null) h.color = new Color(0.55f, 0.9f, 1f, a); }
             if (_baseFlash > 0) { _baseFlash -= dt; _base.color = Color.Lerp(Color.white, new Color(1f, 0.45f, 0.45f), Mathf.Clamp01(_baseFlash * 3)); }
             if (_rangeRing != null)
             {

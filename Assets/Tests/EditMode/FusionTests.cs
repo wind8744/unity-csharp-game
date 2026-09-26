@@ -138,5 +138,35 @@ namespace LaneBattle.Tests
             Assert.AreEqual(a.Hash(), b.Hash());
             Assert.IsTrue(a.IsOver);
         }
+
+        [Test]
+        public void PlayerCanChooseWhichTowersToMergeAndWhichPartnerToFuse()
+        {
+            var sim = NewMatch();
+            // 궁수 4개: 자동은 id 낮은 둘을 쓰지만, 직접 고르면 그 둘이 사라진다
+            Run(sim, MatchCommand.Build(0, 0, 1, 0, 0), MatchCommand.Build(0, 0, 1, 1, 0), MatchCommand.Build(0, 0, 1, 2, 0), MatchCommand.Build(0, 0, 1, 3, 0));
+            var lane = sim.OwnLane(0);
+            var a = lane.TowerAtCell(0, 0); var c = lane.TowerAtCell(2, 0); var d = lane.TowerAtCell(3, 0);
+            Assert.AreEqual(3, sim.MergeCandidates(0, a).Count);
+            Run(sim, MatchCommand.MergeWith(0, 0, a.Id, c.Id, d.Id));
+            Assert.IsNotNull(lane.TowerAtCell(1, 0), "고르지 않은 궁수는 남는다");
+            Assert.IsNull(lane.TowerAtCell(2, 0)); Assert.IsNull(lane.TowerAtCell(3, 0));
+            Assert.AreEqual(2, lane.TowerAtCell(0, 0).Star);
+            // 잘못 고르면(다른 정의) 거절
+            Run(sim, MatchCommand.Build(0, 0, 2, 5, 0));
+            Run(sim, MatchCommand.MergeWith(0, 0, lane.TowerAtCell(1, 0).Id, lane.TowerAtCell(5, 0).Id, lane.TowerAtCell(0, 0).Id));
+            Assert.IsTrue(sim.Events.Exists(e => e.Type == MatchEventType.Rejected));
+            // 합성 짝이 여럿: 원하는 짝을 고른다
+            var sim2 = NewMatch();
+            Run(sim2, MatchCommand.Build(0, 0, 1, 0, 0), MatchCommand.Build(0, 0, 4, 3, 0), MatchCommand.Build(0, 0, 4, 5, 0));
+            var lane2 = sim2.OwnLane(0);
+            var archer = lane2.TowerAtCell(0, 0);
+            var partners = sim2.FusePartners(0, archer, 10);
+            Assert.AreEqual(2, partners.Count);
+            Run(sim2, MatchCommand.Fuse(0, 0, archer.Id, lane2.TowerAtCell(5, 0).Id));
+            Assert.IsNotNull(lane2.TowerAtCell(3, 0), "고르지 않은 창탑은 남는다");
+            Assert.IsNull(lane2.TowerAtCell(5, 0));
+            Assert.AreEqual(10, lane2.TowerAtCell(0, 0).Def.Id);
+        }
     }
 }
