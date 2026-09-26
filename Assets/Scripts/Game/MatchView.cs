@@ -54,6 +54,7 @@ namespace LaneBattle.Game
             for (int i = 0; i < args.Length; i++)
             {
                 if (args[i] == "-bots") BotPlaysHuman = true;
+                if (args[i] == "-shared") GameSession.SharedTowers = true;
                 if (args[i] == "-mode" && i + 1 < args.Length && int.TryParse(args[i + 1], out int m)) PlayersPerTeam = Mathf.Clamp(m, 1, 3);
                 if (args[i] == "-seed" && i + 1 < args.Length && ulong.TryParse(args[i + 1], out ulong sd)) Seed = sd;
             }
@@ -64,7 +65,12 @@ namespace LaneBattle.Game
                 if (args[i] == "-matchtime" && float.TryParse(args[i + 1], out float sec)) FastForward(sec);
             foreach (var a in args)
             {
-                if (a == "-select") { foreach (var t in Sim.OwnLane(MyTeam).Towers) if (t.Alive && t.Owner == MyPlayer) { SelectTower(t.Id); break; } }
+                if (a == "-select")
+                {   // 공유 모드면 팀원 타워를 우선 골라 (스크린샷용) 패널의 "(팀원 P2 타워)" 표시를 보인다
+                    Tower pick = null;
+                    foreach (var t in Sim.OwnLane(MyTeam).Towers) if (t.Alive && Sim.CanUse(t, MyPlayer) && (pick == null || (t.Owner != MyPlayer && pick.Owner == MyPlayer))) pick = t;
+                    if (pick != null) SelectTower(pick.Id);
+                }
                 if (a == "-nosave") GameSession.NoSave = true;
                 if (a == "-pick") { var t = _selectedTower >= 0 ? Sim.OwnLane(MyTeam).TowerAt(_selectedTower) : null; if (t != null) { var ids = Sim.MergeCandidates(MyTeam, t); if (ids.Count > 2) BeginPick(PickMode.Merge, ids); } }
                 if (a == "-recipes") ToggleRecipes();
@@ -106,7 +112,7 @@ namespace LaneBattle.Game
             else
             {
                 var profile = ProfileStore.Current;
-                var cfg = new MatchConfig { PlayersPerTeam = PlayersPerTeam, AllowedSecretAugments = profile.AllowedSecretAugments() };
+                var cfg = new MatchConfig { PlayersPerTeam = PlayersPerTeam, AllowedSecretAugments = profile.AllowedSecretAugments(), SharedTowers = GameSession.SharedTowers && PlayersPerTeam > 1 };
                 var chosen = MapCatalog.ByName(GameSession.MapName);
                 if (chosen != null && profile.UnlockedMaps().Contains(chosen.Name)) cfg.MapOverride = chosen;
                 if (GameSession.HardBot && profile.HardBotUnlocked) GameSession.BotAggression = 85;
@@ -125,7 +131,7 @@ namespace LaneBattle.Game
             var lane = Sim.Lanes[0].Cfg;
             float gap = lane.Map.W + 1.5f;   // 나란히: 내 맵 왼쪽, 상대 맵 오른쪽
             _enemyLane = new LaneRenderer(transform, Sim.OwnLane(EnemyTeam), new Vector2(gap, 0), false, "상대 진영 (내가 보낸 유닛)" + TeamNames(EnemyTeam));
-            _myLane = new LaneRenderer(transform, Sim.OwnLane(MyTeam), Vector2.zero, true, "내 진영 · 빈 칸 클릭: 짓기 · 타워 클릭: 강화/합성" + TeamNames(MyTeam));
+            _myLane = new LaneRenderer(transform, Sim.OwnLane(MyTeam), Vector2.zero, true, "내 진영 · 빈 칸 클릭: 짓기 · 타워 클릭: 강화/합성" + (Sim.Cfg.SharedTowers ? " · 타워 공유 모드" : PlayersPerTeam > 1 ? " · 각자 타워" : "") + TeamNames(MyTeam));
             _myLane.LocalPlayer = _enemyLane.LocalPlayer = MyPlayer;
             _myLane.Banner += t => ShowBanner(t);
             _myLane.PlaySounds = _enemyLane.PlaySounds = !BotPlaysHuman || !Application.isBatchMode;
@@ -253,6 +259,7 @@ namespace LaneBattle.Game
                             CommandType.Send => Sim.ActiveEvent == EventId.Storm ? "폭풍 중에는 공중 유닛을 못 보냅니다" : "보낼 골드가 부족합니다",
                             CommandType.Merge => "같은 타워·같은 별 3개가 필요합니다",
                             CommandType.Fuse => "합성 조합이 맞지 않습니다",
+                            CommandType.Sell => "내 타워만 팔 수 있습니다 (공유 모드가 아닐 때)",
                             _ => "지금은 할 수 없습니다",
                         });
                     }
@@ -363,7 +370,7 @@ namespace LaneBattle.Game
             bool onSlot = !overUi && _myLane.WorldToSlot(w, out col, out row);
             _myLane.SetHover(onSlot ? col : -1, onSlot ? row : -1);
             var hoverTower = onSlot ? Sim.OwnLane(MyTeam).TowerAtCell(col, row) : null;
-            _hoveredTower = hoverTower != null && hoverTower.Owner == MyPlayer ? hoverTower.Id : -1;
+            _hoveredTower = hoverTower != null && Sim.CanUse(hoverTower, MyPlayer) ? hoverTower.Id : -1;
             UpdateGhost(w, onSlot, col, row, overUi);
             bool left = mouse.leftButton.wasPressedThisFrame, right = mouse.rightButton.wasPressedThisFrame;
             if (!left && !right || overUi) return;
@@ -390,10 +397,10 @@ namespace LaneBattle.Game
             if (left)
             {
                 if (existing == null) { SelectTower(-1); ShowMsg("타워를 지으려면 B 또는 상점에서 타워를 고른 뒤 빈 칸을 클릭하세요", 2.5f); }
-                else if (existing.Owner == MyPlayer) { SelectTower(existing.Id == _selectedTower ? -1 : existing.Id); Sfx.Play("click", 0.5f); }
-                else ShowMsg($"팀원 P{existing.Owner + 1}의 타워입니다");
+                else if (Sim.CanUse(existing, MyPlayer)) { SelectTower(existing.Id == _selectedTower ? -1 : existing.Id); Sfx.Play("click", 0.5f); }
+                else ShowMsg($"팀원 P{existing.Owner + 1}의 타워입니다 (각자 타워 모드)");
             }
-            else if (existing != null && existing.Owner == MyPlayer) { _pending.Add(MatchCommand.Sell(MyTeam, MyPlayer, existing.Id)); SelectTower(-1); }
+            else if (existing != null && Sim.CanUse(existing, MyPlayer)) { _pending.Add(MatchCommand.Sell(MyTeam, MyPlayer, existing.Id)); SelectTower(-1); }
         }
 
         // ─────────────────────────── 건설 고스트 ───────────────────────────
@@ -744,7 +751,7 @@ namespace LaneBattle.Game
             }
             var p = Sim.Player(MyTeam, MyPlayer);
             string star = t.Star >= 2 ? new string('★', t.Star) : "";
-            UiKit.Label(_actionPanel, "Name", 0, 0, 450, 18, $"{t.Def.Name} {star}{(t.Upgraded ? " [강화됨]" : "")} — {TowerInfo.Describe(t.Def)}", 11, TextAnchor.MiddleLeft, UiKit.Ink);
+            UiKit.Label(_actionPanel, "Name", 0, 0, 450, 18, $"{t.Def.Name} {star}{(t.Upgraded ? " [강화됨]" : "")}{(t.Owner != MyPlayer ? $" (팀원 P{t.Owner + 1} 타워)" : "")} — {TowerInfo.Describe(t.Def)}", 11, TextAnchor.MiddleLeft, UiKit.Ink);
             float x = 0;
             int upCost = Sim.UpgradeCostOf(MyTeam, t);
             var up = UiKit.SpriteButton(_actionPanel, "Up", x, 22, 110, 30, t.Upgraded ? "강화 완료" : t.Star < 3 ? "강화는 ★3만" : $"[U] 강화 {upCost}골드", Upgrade, "ui_button_green", t.Star < 3 && !t.Upgraded ? 10 : 12);

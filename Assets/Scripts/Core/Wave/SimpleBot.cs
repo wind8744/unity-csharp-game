@@ -58,18 +58,18 @@ namespace LaneBattle.Core.Wave
             // 2. 슬롯이 꽉 찼으면 강화
             if (slots.Count == 0)
                 foreach (var t in lane.Towers)
-                    if (t.Alive && !t.Upgraded && t.Star >= 3 && p.Gold >= t.Def.Cost + reserve) { output.Add(MatchCommand.Upgrade(team, player, t.Id)); return; }
+                    if (t.Alive && sim.CanUse(t, player) && !t.Upgraded && t.Star >= 3 && p.Gold >= t.Def.Cost + reserve) { output.Add(MatchCommand.Upgrade(team, player, t.Id)); return; }
 
             // 2b. 합성은 공짜고 자리를 아끼니 짝이 생기면 바로 (2단계 둘 → 3단계 포함). 별 합치기는 타워가 8개 넘을 때.
             foreach (var t in lane.Towers)
             {
-                if (!t.Alive || t.Owner != player || t.BuildLeft > 0) continue;
+                if (!t.Alive || !sim.CanUse(t, player) || t.BuildLeft > 0) continue;
                 var opts = sim.FuseOptions(team, t);
                 if (opts.Count > 0) { output.Add(MatchCommand.Fuse(team, player, t.Id, opts[0].partnerId)); return; }
             }
             if (towers >= 8 || slots.Count <= 2)
                 foreach (var t in lane.Towers)
-                    if (t.Alive && t.Owner == player && sim.MergeMates(team, t) != null) { output.Add(MatchCommand.Merge(team, player, t.Id)); return; }
+                    if (t.Alive && sim.CanUse(t, player) && sim.MergeMates(team, t) != null) { output.Add(MatchCommand.Merge(team, player, t.Id)); return; }
 
             // 2a'. 손패 조합이 완성돼 있으면 합친다 (히든이 더 세다)
             if (sim.HandRecipeReady(p) != null) { output.Add(MatchCommand.HandFuse(team, player)); return; }

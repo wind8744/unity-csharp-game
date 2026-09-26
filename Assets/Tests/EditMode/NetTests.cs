@@ -162,5 +162,27 @@ namespace LaneBattle.Tests
             Assert.AreEqual(hs.Hash(), cs.Hash());
             Assert.IsNull(client.DesyncInfo);
         }
+
+        [Test]
+        public void LobbyAndStartCarrySharedTowersChoice()
+        {
+            var ht = new LoopbackTransport(); var ct = new LoopbackTransport();
+            var host = new NetSession(ht, true, "h", () => 0);
+            var client = new NetSession(ct, false, "c", () => 0);
+            LoopbackTransport.Connect(ht, ct);
+            client.Poll(); host.Poll(); client.Poll();
+            host.SetPlayersPerTeam(2); client.Poll();
+            host.SetSharedTowers(true); client.Poll();
+            Assert.IsTrue(client.Lobby.SharedTowers);
+            host.StartMatch(3); client.Poll();
+            Assert.IsTrue(client.Start.SharedTowers);
+            Assert.IsTrue(host.CreateSim().Cfg.SharedTowers); Assert.IsTrue(client.CreateSim().Cfg.SharedTowers);
+            // 1v1 에선 켜 둬도 의미 없음
+            var ht2 = new LoopbackTransport(); var ct2 = new LoopbackTransport();
+            var host2 = new NetSession(ht2, true, "h", () => 0); var client2 = new NetSession(ct2, false, "c", () => 0);
+            LoopbackTransport.Connect(ht2, ct2); client2.Poll(); host2.Poll(); client2.Poll();
+            host2.SetSharedTowers(true); host2.StartMatch(3); client2.Poll();
+            Assert.IsFalse(client2.CreateSim().Cfg.SharedTowers);
+        }
     }
 }

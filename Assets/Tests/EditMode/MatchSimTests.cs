@@ -247,5 +247,18 @@ namespace LaneBattle.Tests
                 foreach (var part in parts) Assert.AreNotEqual(Rarity.Hidden, WaveCatalog.Attacker(part).Rarity, "재료는 뽑기 유닛");
             }
         }
+
+        [Test]
+        public void HandGrowsWithLevel()
+        {
+            var m = New();
+            var p = m.Player(0, 0);
+            Assert.AreEqual(10, m.Cfg.HandMax);
+            Assert.AreEqual(10, p.HandMax(m.Cfg));
+            p.Level = 3; Assert.AreEqual(11, p.HandMax(m.Cfg));
+            p.Level = 5; Assert.AreEqual(11, p.HandMax(m.Cfg));
+            p.Level = 6; Assert.AreEqual(12, p.HandMax(m.Cfg));
+            p.Level = 9; Assert.AreEqual(13, p.HandMax(m.Cfg));
+        }
     }
 }
