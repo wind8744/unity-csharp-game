@@ -25,8 +25,9 @@ namespace LaneBattle.Core.Wave
         public int WaveIntervalSeconds = 24;
         public int BuildSeconds = 1;            // 건설 시간 (v0.9: 2 → 1)
         public MapDef MapOverride;              // null 이면 인원수 기본 맵 (MapCatalog)
-        public int[] AugmentSeconds = { 150, 300 };   // 증강 선택 시각
-        public int AugmentPauseSeconds = 10;
+        public int[] AugmentLevels = { 1, 3, 6, 9 };  // 이 레벨에 닿으면 증강 3장 중 1장 (개인별, 게임은 계속). 문서 v0.4 15절
+        public int AugmentChoiceSeconds = 20;         // 안 고르면 자동 선택
+        public int AugmentPauseSeconds = 0;           // 0 = 정지 없음 (예전 방식은 시간표+정지였다)
         public int[] EventSeconds = { 210, 360 };     // 이벤트 시간대 시작
         public int EventDurationSeconds = 45;
         public int EventWarnSeconds = 30;
@@ -37,7 +38,7 @@ namespace LaneBattle.Core.Wave
 
         // 인원수별 기본값 (봇 스윕으로 결정, 문서 v0.4 3·8절): 기지 40/120/360, 웨이브 100/130/130%
         public MapDef Map => MapOverride ?? MapCatalog.ForPlayers(PlayersPerTeam);
-        public int BaseHp => BaseHpOverride > 0 ? BaseHpOverride : PlayersPerTeam switch { 1 => 50, 2 => 170, _ => 300 };
+        public int BaseHp => BaseHpOverride > 0 ? BaseHpOverride : PlayersPerTeam switch { 1 => 60, 2 => 200, _ => 350 };
         public int WaveScalePercent => WaveScaleOverride > 0 ? WaveScaleOverride : PlayersPerTeam switch { 1 => 100, _ => 130 };
 
         public LaneConfig MakeLaneConfig() => new LaneConfig
@@ -62,6 +63,9 @@ namespace LaneBattle.Core.Wave
         public MissionId Mission;
         public bool MissionDone;
         public int FreeSends;
+        public int OfferDeadlineTick = -1;           // 증강을 골라야 하는 마감 (경기 틱). -1 = 없음
+        public int AugmentPicks;                     // 고른 증강 수 (자동 포함)
+        public HashSet<int> OfferedLevels = new HashSet<int>();
         public int Level = 1, Xp;                    // 뽑기 등급 확률을 정하는 개인 레벨 (경험치: 수입 때 자동 + 골드로 구매)
         public int MaxStar = 1;                      // 해금 조건용
         public HashSet<int> FusedKinds = new HashSet<int>();
@@ -203,7 +207,10 @@ namespace LaneBattle.Core.Wave
 
             if (Cfg.FunLayer)
             {
-                if (AugmentRound < Cfg.AugmentSeconds.Length && gtick == Cfg.AugmentSeconds[AugmentRound] * Cfg.TicksPerSecond) BeginAugmentPause();
+                if (gtick == 1) for (int t = 0; t < 2; t++) foreach (var p in Players[t]) OfferForLevel(p);
+                for (int t = 0; t < 2; t++)
+                    foreach (var p in Players[t])
+                        if (p.Offers.Count > 0 && p.OfferDeadlineTick >= 0 && gtick >= p.OfferDeadlineTick) GrantAugment(p, 0);
                 if (NextEvent.HasValue && EventRound < Cfg.EventSeconds.Length)
                 {
                     int startTick = Cfg.EventSeconds[EventRound] * Cfg.TicksPerSecond;
@@ -241,17 +248,20 @@ namespace LaneBattle.Core.Wave
 
         // ─────────────────────────── 증강 ───────────────────────────
 
-        void BeginAugmentPause()
+        /// <summary>레벨이 증강 레벨(1·3·6·9)에 닿았으면 그 사람에게 증강 3장을 준다. 한 레벨에 한 번.</summary>
+        void OfferForLevel(PlayerEcon p)
         {
-            AugmentRound++;
-            PauseLeft = Cfg.AugmentPauseSeconds * Cfg.TicksPerSecond;
-            for (int t = 0; t < 2; t++)
-                foreach (var p in Players[t]) OfferAugments(p);
+            if (!Cfg.FunLayer || Array.IndexOf(Cfg.AugmentLevels, p.Level) < 0 || p.OfferedLevels.Contains(p.Level)) return;
+            p.OfferedLevels.Add(p.Level);
+            if (p.Offers.Count > 0) GrantAugment(p, 0);   // 이전 것을 아직 안 골랐으면 자동 선택하고 새로 준다
+            OfferAugments(p);
+            AugmentRound = Math.Max(AugmentRound, p.OfferedLevels.Count);
         }
 
         void OfferAugments(PlayerEcon p)
         {
             p.Offers.Clear();
+            p.OfferDeadlineTick = GameTick + Cfg.AugmentChoiceSeconds * Cfg.TicksPerSecond;
             var pool = new List<AugmentId>();
             foreach (var a in FunCatalog.Augments)
             {
@@ -283,6 +293,8 @@ namespace LaneBattle.Core.Wave
             if (index < 0 || index >= p.Offers.Count) return;
             var a = p.Offers[index];
             p.Offers.Clear();
+            p.OfferDeadlineTick = -1;
+            p.AugmentPicks++;
             p.Augments.Add(a);
             var lane = Lanes[p.Team];
             switch (a)
@@ -372,6 +384,7 @@ namespace LaneBattle.Core.Wave
                 p.Xp -= WaveCatalog.XpToNext(p.Level);
                 p.Level++;
                 Emit(MatchEventType.LevelUp, p.Team, p.Index, p.Level, 0);
+                OfferForLevel(p);
             }
             if (p.Level >= WaveCatalog.MaxLevel) p.Xp = 0;
         }

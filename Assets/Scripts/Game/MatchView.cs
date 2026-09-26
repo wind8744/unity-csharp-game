@@ -252,7 +252,7 @@ namespace LaneBattle.Game
                     }
                     break;
                 case MatchEventType.AugmentOffer:
-                    if (mine) { ShowBanner("증강 선택! 10초 동안 양쪽 다 멈춥니다"); Sfx.Play("augment_open", 0.8f); }
+                    if (mine) { ShowBanner($"레벨 {Sim.Player(MyTeam, MyPlayer).Level} 증강 선택! ({Sim.Cfg.AugmentChoiceSeconds}초 안에)"); Sfx.Play("augment_open", 0.8f); }
                     break;
                 case MatchEventType.AugmentPicked:
                     if (mine) { ShowMsg($"증강 획득: {FunCatalog.AugmentName((AugmentId)ev.A)} — {FunCatalog.AugmentDesc((AugmentId)ev.A)}", 4f); Sfx.Play("augment_pick", 0.8f); }
@@ -505,7 +505,7 @@ namespace LaneBattle.Game
             _eventText = UiKit.Label(_infoPanel, "Event", 10, 118, 216, 36, "", 11, TextAnchor.UpperLeft, new Color(0.9f, 0.8f, 1f));
             _intel = UiKit.Label(_infoPanel, "Intel", 10, 156, 216, 44, "", 11, TextAnchor.UpperLeft, new Color(0.8f, 0.85f, 1f));
 
-            _augmentPanel = UiKit.SpritePanel(ui, "AugmentPanel", 190, 120, 900, 330, "ui_panel_dark").transform;
+            _augmentPanel = UiKit.SpritePanel(ui, "AugmentPanel", 230, 300, 820, 196, "ui_panel_dark").transform;
             _augmentPanel.gameObject.SetActive(false);
             _recipePanel = UiKit.SpritePanel(ui, "RecipePanel", 240, 70, 800, 430, "ui_panel").transform;
             _recipePanel.gameObject.SetActive(false);
@@ -617,19 +617,19 @@ namespace LaneBattle.Game
             _augmentPanel.gameObject.SetActive(show);
             if (!show) return;
             _augmentPanel.SetAsLastSibling();
-            UiKit.Label(_augmentPanel, "Title", 0, 16, 900, 36, "", 18, TextAnchor.MiddleCenter, UiKit.Accent);
+            UiKit.Label(_augmentPanel, "Title", 0, 8, 820, 26, "", 15, TextAnchor.MiddleCenter, UiKit.Accent);
             for (int i = 0; i < p.Offers.Count; i++)
             {
                 int idx = i;
                 var a = p.Offers[i];
-                var img = UiKit.SpritePanel(_augmentPanel, "Offer" + i, 30 + i * 285, 70, 270, 230, "ui_panel");
+                var img = UiKit.SpritePanel(_augmentPanel, "Offer" + i, 20 + i * 264, 40, 252, 146, "ui_panel");
                 var b = img.gameObject.AddComponent<Button>(); b.targetGraphic = img;
                 b.onClick.AddListener(() => { Sfx.Play("click", 0.6f); PickAugment(idx); });
-                string icon = FunCatalog.AugmentGroup(a) switch { "자원" => "aug_resource", "강화" => "aug_power", "방해" => "aug_hinder", _ => "aug_info" };
-                UiKit.Icon(img.transform, "Icon", 119, 12, 32, icon);
-                UiKit.Label(img.transform, "G", 10, 48, 250, 20, $"[{FunCatalog.AugmentGroup(a)}]", 12, TextAnchor.MiddleCenter, UiKit.InkSoft);
-                UiKit.Label(img.transform, "N", 10, 70, 250, 34, FunCatalog.AugmentName(a), 24, TextAnchor.MiddleCenter, UiKit.Ink);
-                UiKit.Label(img.transform, "D", 16, 112, 238, 110, FunCatalog.AugmentDesc(a), 13, TextAnchor.UpperCenter, UiKit.Ink);
+                string icon = FunCatalog.AugmentGroup(a) switch { "자원" => "aug_resource", "강화" => "aug_power", "방해" => "aug_hinder", "정보" => "aug_info", _ => "icon_star" };
+                UiKit.Icon(img.transform, "Icon", 10, 10, 28, icon);
+                UiKit.Label(img.transform, "N", 44, 8, 200, 24, FunCatalog.AugmentName(a), 18, TextAnchor.MiddleLeft, UiKit.Ink);
+                UiKit.Label(img.transform, "G", 44, 30, 200, 16, $"[{FunCatalog.AugmentGroup(a)}]", 11, TextAnchor.MiddleLeft, UiKit.InkSoft);
+                UiKit.Label(img.transform, "D", 12, 52, 228, 90, FunCatalog.AugmentDesc(a), 12, TextAnchor.UpperLeft, UiKit.Ink);
             }
             RefreshAugmentTitle();
         }
@@ -637,7 +637,9 @@ namespace LaneBattle.Game
         void RefreshAugmentTitle()
         {
             if (!_augmentPanel.gameObject.activeSelf) return;
-            UiKit.SetText(_augmentPanel, "Title", Sim.IsPaused ? $"증강을 하나 고르세요 — {Mathf.CeilToInt(Sim.PauseLeft / (float)Sim.Cfg.TicksPerSecond)}초 뒤 자동 선택 (양쪽 다 멈춤)" : "추가 증강 선택 (게임은 계속 진행)");
+            var pp = Sim.Player(MyTeam, MyPlayer);
+            int left = pp.OfferDeadlineTick >= 0 ? Mathf.Max(0, (pp.OfferDeadlineTick - Sim.GameTick) / Sim.Cfg.TicksPerSecond) : 0;
+            UiKit.SetText(_augmentPanel, "Title", $"레벨 {pp.Level} 증강 — 하나 고르세요 ({left}초 뒤 자동 선택, 게임은 계속 진행)");
         }
 
         void BuildRecipePanel()

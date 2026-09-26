@@ -56,13 +56,13 @@ namespace LaneBattle.Tests
                 for (ulong seed = 1; seed <= 12; seed++)
                 {
                     var m = new MatchSim(cfg, seed);
-                    for (int i = 0; i < 20 * 3; i++) m.Step();
+                    m.Step();   // 레벨 1 증강
                     foreach (var a in m.Player(0, 0).Offers) if (FunCatalog.IsSecret(a)) seen++;
                 }
                 return seen;
             }
-            Assert.AreEqual(0, Count(new MatchConfig { AugmentSeconds = new[] { 2 } }));
-            Assert.Greater(Count(new MatchConfig { AugmentSeconds = new[] { 2 }, AllowedSecretAugments = new HashSet<AugmentId> { AugmentId.StarBlessing, AugmentId.Alchemy, AugmentId.Veteran } }), 0);
+            Assert.AreEqual(0, Count(new MatchConfig()));
+            Assert.Greater(Count(new MatchConfig { AllowedSecretAugments = new HashSet<AugmentId> { AugmentId.StarBlessing, AugmentId.Alchemy, AugmentId.Veteran } }), 0);
         }
 
         [Test]
