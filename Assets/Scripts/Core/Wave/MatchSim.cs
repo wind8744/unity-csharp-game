@@ -93,8 +93,10 @@ namespace LaneBattle.Core.Wave
         public static MatchCommand Send(int team, int player, int handIndex) => new MatchCommand { Team = team, Player = player, Type = CommandType.Send, A = handIndex };
         public static MatchCommand Transfer(int team, int player, int toPlayer, int amount) => new MatchCommand { Team = team, Player = player, Type = CommandType.Transfer, A = toPlayer, B = amount };
         public static MatchCommand PickAugment(int team, int player, int offerIndex) => new MatchCommand { Team = team, Player = player, Type = CommandType.PickAugment, A = offerIndex };
-        /// <summary>별 합치기: 타워 A 와 같은 정의·별인 내 타워 두 개를 골라 A 자리에 ★+1.</summary>
+        /// <summary>별 합치기: 타워 A 와 같은 정의·별인 내 타워 두 개(자동: id 낮은 순)를 골라 A 자리에 ★+1.</summary>
         public static MatchCommand Merge(int team, int player, int towerId) => new MatchCommand { Team = team, Player = player, Type = CommandType.Merge, A = towerId };
+        /// <summary>별 합치기: 소모할 두 타워를 직접 고른다.</summary>
+        public static MatchCommand MergeWith(int team, int player, int towerId, int mate1, int mate2) => new MatchCommand { Team = team, Player = player, Type = CommandType.Merge, A = towerId, B = mate1, C = mate2 };
         /// <summary>합성: 타워 A 와 타워 B (레시피) → A 자리에 합성 타워.</summary>
         public static MatchCommand Fuse(int team, int player, int towerA, int towerB) => new MatchCommand { Team = team, Player = player, Type = CommandType.Fuse, A = towerA, B = towerB };
     }
@@ -430,7 +432,15 @@ namespace LaneBattle.Core.Wave
                 {
                     var t = lane.TowerAt(c.A);
                     if (t == null || t.Owner != c.Player) { Reject(c); return; }
-                    var mates = MergeMates(c.Team, t);
+                    (int, int)? mates;
+                    if (c.B > 0 && c.C > 0)
+                    {
+                        var m1 = lane.TowerAt(c.B); var m2 = lane.TowerAt(c.C);
+                        bool ok = m1 != null && m2 != null && m1.Id != m2.Id && m1.Id != t.Id && m2.Id != t.Id && m1.Owner == c.Player && m2.Owner == c.Player
+                                  && m1.Def.Id == t.Def.Id && m2.Def.Id == t.Def.Id && m1.Star == t.Star && m2.Star == t.Star;
+                        mates = ok ? (c.B, c.C) : ((int, int)?)null;
+                    }
+                    else mates = MergeMates(c.Team, t);
                     if (mates == null) { Reject(c); return; }
                     var r = lane.MergeStar(t.Id, mates.Value.Item1, mates.Value.Item2);
                     if (r == null) { Reject(c); return; }
@@ -543,6 +553,32 @@ namespace LaneBattle.Core.Wave
             if (ids.Count < 2) return null;
             ids.Sort();
             return (ids[0], ids[1]);
+        }
+
+        /// <summary>타워 t 와 합칠 수 있는 같은 주인·같은 정의·같은 별 타워 전부 (id 순). 2개 넘으면 사람이 고를 수 있다.</summary>
+        public List<int> MergeCandidates(int team, Tower t)
+        {
+            var ids = new List<int>();
+            if (t == null || t.Star >= 3) return ids;
+            foreach (var o in Lanes[team].Towers)
+                if (o.Alive && o.Id != t.Id && o.Owner == t.Owner && o.Def.Id == t.Def.Id && o.Star == t.Star) ids.Add(o.Id);
+            ids.Sort();
+            return ids;
+        }
+
+        /// <summary>타워 t 와 합쳐 result 가 되는 같은 주인 짝 타워 전부 (id 순).</summary>
+        public List<int> FusePartners(int team, Tower t, int resultDefId)
+        {
+            var ids = new List<int>();
+            if (t == null) return ids;
+            foreach (var o in Lanes[team].Towers)
+            {
+                if (!o.Alive || o.Id == t.Id || o.Owner != t.Owner) continue;
+                var def = WaveCatalog.FindRecipe(t.Def.Id, o.Def.Id);
+                if (def != null && def.Id == resultDefId) ids.Add(o.Id);
+            }
+            ids.Sort();
+            return ids;
         }
 
         /// <summary>타워 t 와 합성할 수 있는 같은 주인 타워들 (레시피 짝). (짝 타워 id, 결과 정의).</summary>
