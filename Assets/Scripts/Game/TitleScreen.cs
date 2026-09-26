@@ -11,6 +11,7 @@ namespace LaneBattle.Game
     public sealed class TitleScreen : MonoBehaviour
     {
         public System.Action<int> OnStart;
+        public System.Action OnTutorial;
         public System.Action OnOnline;
         Transform _ui, _popup;
         RectTransform _logo;
@@ -41,16 +42,18 @@ namespace LaneBattle.Game
             var logo = _logo.gameObject.AddComponent<Image>(); logo.sprite = Art.Get("logo"); logo.preserveAspect = true; logo.raycastTarget = false;
             UiKit.OutlinedLabel(_ui, "Tag", 0, 262, 1280, 24, "귀여운 타워로 막고, 뽑은 유닛을 보내 상대 성을 무너뜨리자!", 15, TextAnchor.MiddleCenter, Color.white);
 
-            UiKit.SpritePanel(_ui, "Menu", 440, 300, 400, 340, "ui_panel");
-            UiKit.SpriteButton(_ui, "M1", 470, 322, 340, 44, "혼자 하기 (1 vs 1 봇)", () => OnStart?.Invoke(1), "ui_button_green", 17);
-            UiKit.SpriteButton(_ui, "M2", 470, 374, 340, 44, "2 vs 2 (봇 팀원과 함께)", () => OnStart?.Invoke(2), "ui_button", 17);
-            UiKit.SpriteButton(_ui, "M3", 470, 426, 340, 44, "3 vs 3 (봇 팀원 둘과 함께)", () => OnStart?.Invoke(3), "ui_button", 17);
-            UiKit.SpriteButton(_ui, "Online", 470, 478, 340, 44, "온라인 대전 (친구와 LAN/IP 연결)", () => OnOnline?.Invoke(), "ui_button_blue", 16);
-            UiKit.SpriteButton(_ui, "How", 470, 532, 164, 40, "게임 방법", ShowHowTo, "ui_button_grey", 14);
-            UiKit.SpriteButton(_ui, "Recipes", 646, 532, 164, 40, "합성표", ShowRecipes, "ui_button_grey", 14);
-            UiKit.SpriteButton(_ui, "Sound", 470, 580, 164, 40, "소리 설정", ShowSound, "ui_button_grey", 14);
-            UiKit.SpriteButton(_ui, "Quit", 646, 580, 164, 40, "종료", () => Application.Quit(), "ui_button_grey", 14);
             var profile = ProfileStore.Current;
+            bool fresh = !profile.TutorialDone;   // 튜토리얼을 아직 안 했으면 그 버튼이 초록, 했으면 1v1 이 초록
+            UiKit.SpritePanel(_ui, "Menu", 440, 300, 400, 340, "ui_panel");
+            UiKit.SpriteButton(_ui, "Tutorial", 470, 322, 340, 44, fresh ? "처음이라면: 튜토리얼 (5분)" : "튜토리얼 (다시 보기)", () => OnTutorial?.Invoke(), fresh ? "ui_button_green" : "ui_button_grey", 17);
+            UiKit.SpriteButton(_ui, "M1", 470, 374, 340, 44, "혼자 하기 (1 vs 1 봇)", () => OnStart?.Invoke(1), fresh ? "ui_button" : "ui_button_green", 17);
+            UiKit.SpriteButton(_ui, "M2", 470, 426, 340, 44, "2 vs 2 (봇 팀원과 함께)", () => OnStart?.Invoke(2), "ui_button", 17);
+            UiKit.SpriteButton(_ui, "M3", 470, 478, 340, 44, "3 vs 3 (봇 팀원 둘과 함께)", () => OnStart?.Invoke(3), "ui_button", 17);
+            UiKit.SpriteButton(_ui, "Online", 470, 530, 340, 44, "온라인 대전 (친구와 LAN/IP 연결)", () => OnOnline?.Invoke(), "ui_button_blue", 16);
+            UiKit.SpriteButton(_ui, "How", 470, 582, 80, 40, "게임 방법", ShowHowTo, "ui_button_grey", 12);
+            UiKit.SpriteButton(_ui, "Recipes", 556, 582, 80, 40, "합성표", ShowRecipes, "ui_button_grey", 12);
+            UiKit.SpriteButton(_ui, "Sound", 642, 582, 80, 40, "소리 설정", ShowSound, "ui_button_grey", 12);
+            UiKit.SpriteButton(_ui, "Quit", 728, 582, 82, 40, "종료", () => Application.Quit(), "ui_button_grey", 12);
             UiKit.SpriteButton(_ui, "Codex", 860, 322, 150, 40, $"해금 도감 {profile.Unlocks.Count}/{Profile.Catalog.Length}", ShowCodex, "ui_button", 13);
             BuildOptions(profile);
             UiKit.OutlinedLabel(_ui, "Ver", 0, 690, 1270, 20, $"쪼꼬미 공성전 v0.9 · 전적 {profile.Wins}승 {profile.Matches - profile.Wins}패" + (profile.Title.Length > 0 ? $" · 칭호 [{profile.Title}]" : ""), 11, TextAnchor.MiddleRight, new Color(1, 1, 1, 0.85f));
@@ -68,11 +71,13 @@ namespace LaneBattle.Game
             if (_options == null) _options = UiKit.Rect(_ui, "Options", 860, 370, 200, 260);
             UiKit.Clear(_options);
             var maps = profile.UnlockedMaps();
-            UiKit.SpritePanel(_options, "Bg", 0, 0, 200, 70 + (maps.Count > 0 ? 34 * (maps.Count + 1) : 0) + (profile.HardBotUnlocked ? 40 : 0), "ui_panel");
+            UiKit.SpritePanel(_options, "Bg", 0, 0, 200, 106 + (maps.Count > 0 ? 34 * (maps.Count + 1) : 0) + (profile.HardBotUnlocked ? 40 : 0), "ui_panel");
             float y = 8;
             UiKit.Label(_options, "ShareL", 10, y, 180, 20, "팀전(2v2·3v3) 타워", 12, TextAnchor.MiddleLeft, UiKit.Ink); y += 22;
             UiKit.SpriteButton(_options, "Share", 10, y, 180, 30, GameSession.SharedTowers ? "공유: 팀 타워 누구나 합성" : "각자: 내 타워만 합성",
-                () => { GameSession.SharedTowers = !GameSession.SharedTowers; BuildOptions(profile); }, GameSession.SharedTowers ? "ui_button_blue" : "ui_button_grey", 11); y += 38;
+                () => { GameSession.SharedTowers = !GameSession.SharedTowers; BuildOptions(profile); }, GameSession.SharedTowers ? "ui_button_blue" : "ui_button_grey", 11); y += 36;
+            UiKit.SpriteButton(_options, "Tips", 10, y, 180, 30, profile.Tips ? "도움말 팁: 켬" : "도움말 팁: 끔",
+                () => { profile.Tips = !profile.Tips; if (!GameSession.NoSave) ProfileStore.Save(); BuildOptions(profile); }, profile.Tips ? "ui_button_blue" : "ui_button_grey", 11); y += 38;
             if (maps.Count > 0)
             {
                 UiKit.Label(_options, "MapL", 10, y, 180, 20, "맵 (혼자 하기 1v1)", 12, TextAnchor.MiddleLeft, UiKit.Ink); y += 22;
@@ -155,6 +160,7 @@ namespace LaneBattle.Game
                 "■ 재미 요소  레벨 1·3·6·9에 닿으면 증강 3장 중 1장(20초 안에, 게임은 계속). 3:30·6:00에 이벤트 시간대(30초 전 예고). 비밀 미션은 시작 때 하나.\n\n" +
                 "■ 팀전  손패(공격 유닛)는 각자. 타워는 [각자] 모드면 내 타워만 합성·판매, [공유] 모드면 팀 타워를 누구나 합성·판매(환불은 지은 사람에게). 타이틀 오른쪽·온라인 로비에서 고른다.\n" +
                 "■ 온라인  한 명이 [방 만들기], 나머지는 그 주소로 [참가]. 호스트가 인원·팀·타워 공유를 정하고 시작. 빈 자리는 봇.\n\n" +
+                "■ 처음이라면  타이틀의 [튜토리얼]: 5분짜리 판에서 짓기 → 뽑기 → 보내기 → 합성 → ★합치기 → 레벨업을 한 단계씩 안내. 경기 중엔 합성·합치기가 되는 타워에 R·C 표시, 상황 팁이 뜹니다.\n" +
                 "■ 조작 (롤토체스식)  D = 뽑기, F = 레벨업 경험치, 카드 위에서 W = 보내기, E = 판매(타워 위), R = 합성(타워 위·손패 조합 공통),\n" +
                 "   C = ★ 합치기(타워 위), U = 강화(타워 위). 전부 커서를 올린 대상에 바로 적용. 타워를 클릭하면 같은 버튼이 아래에 나옵니다.\n" +
                 "■ 건설 (스타크래프트식)  B = 목록 → 글자 키(Q W E R A S D F G) 또는 상점 클릭 → 커서에 뜬 타워를 빈 칸에 클릭\n" +

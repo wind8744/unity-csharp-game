@@ -124,5 +124,40 @@ namespace LaneBattle.PlayTests
             foreach (var n in new[] { "shoot_arrow", "shoot_cannon", "hit", "death_small", "leak", "build", "merge", "fuse", "draw", "send", "win", "lose", "bgm_title", "bgm_battle", "bgm_tension", "click" })
                 Assert.IsNotNull(Resources.Load<AudioClip>("Audio/" + n), n);
         }
+
+        [UnityTest]
+        public IEnumerator TutorialModeGuidesStepsAsActionsHappen()
+        {
+            GameSession.Tutorial = true;
+            var go = new GameObject("MatchView");
+            go.SetActive(false);
+            var view = go.AddComponent<MatchView>();
+            go.SetActive(true);
+            GameSession.Tutorial = false;   // 다른 테스트에 안 새게 바로 되돌린다 (뷰는 이미 튜토리얼로 만들어졌다)
+            GameSession.NoSave = true;
+            yield return null;
+            Assert.IsNotNull(view.Guide);
+            Assert.AreEqual(7, view.Guide.Steps.Count);
+            Assert.AreEqual(0, view.Guide.Index);
+            Assert.AreEqual(300, view.Sim.Cfg.MatchSeconds);
+            Assert.IsFalse(view.Sim.Cfg.FunLayer);
+            // 사람이 하듯 명령을 직접: 짓기 → 뽑기 → 보내기. 각 명령이 성공한 뒤 한 프레임이면 단계가 넘어간다
+            var lane = view.Sim.OwnLane(0);
+            int bx = -1, by = -1;
+            for (int y = 0; y < lane.Map.H && bx < 0; y++) for (int x = 0; x < lane.Map.W && bx < 0; x++) if (lane.CanBuildAt(x, y)) { bx = x; by = y; }
+            view.Build(1, bx, by);
+            view.FastForward(1f); yield return null;
+            Assert.AreEqual(1, view.Guide.Index, "짓기");
+            view.Draw();
+            view.FastForward(1f); yield return null;
+            Assert.AreEqual(2, view.Guide.Index, "뽑기");
+            view.SendCard(0);
+            view.FastForward(1f); yield return null;
+            Assert.AreEqual(3, view.Guide.Index, "보내기");
+            view.FastForward(60f); yield return null;
+            Assert.AreEqual(0, view.Sim.Player(1, 0).Sent, "상대 봇은 75초까지 조용하다");
+            Assert.Greater(view.Sim.OwnLane(1).Towers.Count, 0, "조용한 동안에도 상대 봇은 타워를 짓는다");
+            Object.Destroy(go);
+        }
     }
 }

@@ -95,5 +95,16 @@ namespace LaneBattle.Tests
             Assert.Less(MapCatalog.TwoBends.LengthCells, MapCatalog.OneVsOne.LengthCells);
             Assert.Greater(MapCatalog.FiveBends.LengthCells, MapCatalog.OneVsOne.LengthCells);
         }
+
+        [Test]
+        public void TutorialAndTipsFlagsRoundTrip()
+        {
+            var p = new Profile();
+            Assert.IsFalse(p.TutorialDone); Assert.IsTrue(p.Tips);
+            p.TutorialDone = true; p.Tips = false;
+            var q = Profile.Parse(p.Serialize());
+            Assert.IsTrue(q.TutorialDone); Assert.IsFalse(q.Tips);
+            Assert.IsTrue(Profile.Parse("matches=3\n").Tips, "옛 프로필엔 팁 켬");
+        }
     }
 }

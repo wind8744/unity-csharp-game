@@ -15,6 +15,7 @@ namespace LaneBattle.Core.Wave
     public sealed class SimpleBot : IMatchAgent
     {
         public int Aggression = 50; // 0~100. 높을수록 보내기에 골드를 더 쓴다
+        public int QuietSeconds = 0; // 이 시간까지는 뽑기·보내기·돌격 강화를 안 한다 (튜토리얼: 사람이 배울 동안 조용히 타워만)
 
         public void Decide(MatchSim sim, int team, int player, List<MatchCommand> output)
         {
@@ -77,6 +78,8 @@ namespace LaneBattle.Core.Wave
             // 2b'. 경험치: 여유 골드가 있으면 30초마다 한 번 산다 (레벨이 시간에 뒤처지면 더 자주)
             if (p.Level < WaveCatalog.MaxLevel && p.Gold >= WaveCatalog.XpBuyCost + reserve + 10 && (seconds % 30 == 0 || p.Level < 2 + seconds / 60))
             { output.Add(MatchCommand.BuyXp(team, player)); return; }
+
+            if (seconds < QuietSeconds) return;
 
             // 2c. 돌격 강화: 분당 1레벨 정도, 여유 골드가 있을 때
             {

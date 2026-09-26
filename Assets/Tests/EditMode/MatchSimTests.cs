@@ -260,5 +260,28 @@ namespace LaneBattle.Tests
             p.Level = 6; Assert.AreEqual(12, p.HandMax(m.Cfg));
             p.Level = 9; Assert.AreEqual(13, p.HandMax(m.Cfg));
         }
+
+        [Test]
+        public void QuietBotBuildsButDoesNotDrawOrSendUntilQuietSecondsPass()
+        {
+            var m = new MatchSim(new MatchConfig { FunLayer = false, FirstWaveSeconds = 75 }, 3);
+            var bot = new SimpleBot { Aggression = 80, QuietSeconds = 60 };
+            var cmds = new List<MatchCommand>();
+            void RunTo(int seconds)
+            {
+                while (m.Seconds < seconds && !m.IsOver)
+                {
+                    cmds.Clear();
+                    if (m.Tick % 20 == 0) bot.Decide(m, 1, 0, cmds);
+                    m.Step(cmds);
+                }
+            }
+            RunTo(55);
+            var p = m.Player(1, 0);
+            Assert.AreEqual(0, p.Drawn); Assert.AreEqual(0, p.Sent);
+            Assert.Greater(m.OwnLane(1).Towers.Count, 0, "조용한 동안에도 타워는 짓는다");
+            RunTo(120);
+            Assert.Greater(p.Drawn, 0, "조용한 시간이 지나면 뽑는다");
+        }
     }
 }
