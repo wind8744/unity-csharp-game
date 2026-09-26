@@ -144,7 +144,7 @@ namespace LaneBattle.Core.Wave
             foreach (var e in FunCatalog.Events) _eventPool.Add(e);
             for (int t = 0; t < 2; t++)
             {
-                Lanes[t] = new LaneSim(cfg.MakeLaneConfig(), seed * 7 + (ulong)t + 1);
+                Lanes[t] = new LaneSim(cfg.MakeLaneConfig(), seed * 7 + (ulong)t + 1) { AutoClearEvents = false };
                 Teams[t] = new TeamEcon { Index = t, Income = cfg.BaseIncomePerPlayer * cfg.PlayersPerTeam };
                 Players[t] = new PlayerEcon[cfg.PlayersPerTeam];
                 for (int p = 0; p < cfg.PlayersPerTeam; p++)
@@ -174,6 +174,7 @@ namespace LaneBattle.Core.Wave
         {
             if (IsOver) return;
             Events.Clear();
+            for (int t = 0; t < 2; t++) Lanes[t].Events.Clear();   // 이번 틱의 명령 이벤트(판매·합성·합치기)가 라인 진행 이벤트와 함께 남도록 여기서만 비운다
             Tick++;
 
             if (commands != null) foreach (var c in commands) Apply(c);

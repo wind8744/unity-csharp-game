@@ -133,5 +133,22 @@ namespace LaneBattle.Tests
             Assert.IsTrue(m.IsOver);
             Assert.AreEqual(MapCatalog.TwoVsTwo, m.OwnLane(0).Cfg.Map);
         }
+
+        [Test]
+        public void CommandEventsSurviveTheSameTickSoTheViewSeesThem()
+        {
+            var m = New(3);
+            var lane = m.OwnLane(0);
+            m.Step(L(MatchCommand.Build(0, 0, 1, 0, 0), MatchCommand.Build(0, 0, 4, 3, 0)));
+            Assert.AreEqual(2, lane.Events.FindAll(e => e.Type == SimEventType.Built).Count, "짓기 이벤트가 같은 틱에 남는다");
+            var archer = lane.TowerAtCell(0, 0); var spear = lane.TowerAtCell(3, 0);
+            m.Step(L(MatchCommand.Fuse(0, 0, archer.Id, spear.Id)));
+            Assert.AreEqual(2, lane.Events.FindAll(e => e.Type == SimEventType.Sold).Count, "재료 둘의 사라짐 이벤트");
+            Assert.IsTrue(lane.Events.Exists(e => e.Type == SimEventType.Fused));
+            m.Step(L(MatchCommand.Sell(0, 0, lane.TowerAtCell(0, 0).Id)));
+            Assert.IsTrue(lane.Events.Exists(e => e.Type == SimEventType.Sold), "판매 이벤트");
+            m.Step();
+            Assert.IsFalse(lane.Events.Exists(e => e.Type == SimEventType.Sold), "다음 틱엔 비워진다");
+        }
     }
 }

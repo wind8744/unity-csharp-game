@@ -253,10 +253,13 @@ namespace LaneBattle.Core.Wave
 
         // ─────────────────────────── 진행 ───────────────────────────
 
+        /// <summary>true 면 Step 시작 때 Events 를 비운다 (단독 사용). MatchSim 은 명령 이벤트(판매·합성)를 잃지 않도록 false 로 두고 직접 비운다.</summary>
+        public bool AutoClearEvents = true;
+
         public void Step()
         {
             if (IsOver) return;
-            Events.Clear();
+            if (AutoClearEvents) Events.Clear();
             Tick++;
 
             if (Cfg.AutoWaves && NextWaveIndex < WaveCatalog.BaseWaves.Length && Tick >= NextWaveTick())
