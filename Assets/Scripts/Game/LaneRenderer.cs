@@ -17,6 +17,7 @@ namespace LaneBattle.Game
         public event Action<string> Banner;
         public bool PlaySounds = true;
         public int SelectedTowerId = -1;
+        public int LocalPlayer = 0;          // 이 사람의 자리 번호 (다른 주인 타워엔 P번호 표시)
 
         readonly Transform _root, _fxRoot;
         readonly Dictionary<int, CreepVisual> _creeps = new Dictionary<int, CreepVisual>();
@@ -424,10 +425,10 @@ namespace LaneBattle.Game
             v.BuildBack = Square(root, "BuildBack", 0.7f, 0.08f, new Color(0, 0, 0, 0.6f), 6); v.BuildBack.transform.localPosition = new Vector3(0, -0.36f, 0);
             v.BuildBar = Square(root, "BuildBar", 0.7f, 0.08f, UiKit.Gold, 7); v.BuildBar.transform.localPosition = v.BuildBack.transform.localPosition;
             v.Silence = Sprite(root, "Silence", Art.Get("fx_silence"), Color.white, 6); v.Silence.transform.localPosition = new Vector3(-0.3f, 0.3f, 0); v.Silence.enabled = false;
-            if (t.Owner > 0)
+            if (t.Owner != LocalPlayer && IsMine)
             {
                 v.OwnerLabel = TextLabel(root, $"P{t.Owner + 1}", 0.032f, new Vector3(-0.34f, -0.28f, 0), TextAnchor.MiddleCenter, 7);
-                v.OwnerLabel.color = t.Owner == 1 ? new Color(0.6f, 0.85f, 1f) : new Color(1f, 0.75f, 0.9f);
+                v.OwnerLabel.color = t.Owner % 2 == 1 ? new Color(0.6f, 0.85f, 1f) : new Color(1f, 0.75f, 0.9f);
             }
             _towers[t.Id] = v;
             ApplyTower(v);

@@ -9,6 +9,7 @@ namespace LaneBattle.Game
     public sealed class TitleScreen : MonoBehaviour
     {
         public System.Action<int> OnStart;
+        public System.Action OnOnline;
         Transform _ui, _popup;
         RectTransform _logo;
         float _t;
@@ -38,15 +39,16 @@ namespace LaneBattle.Game
             var logo = _logo.gameObject.AddComponent<Image>(); logo.sprite = Art.Get("logo"); logo.preserveAspect = true; logo.raycastTarget = false;
             UiKit.OutlinedLabel(_ui, "Tag", 0, 262, 1280, 24, "귀여운 타워로 막고, 뽑은 유닛을 보내 상대 성을 무너뜨리자!", 15, TextAnchor.MiddleCenter, Color.white);
 
-            UiKit.SpritePanel(_ui, "Menu", 440, 300, 400, 300, "ui_panel");
+            UiKit.SpritePanel(_ui, "Menu", 440, 300, 400, 340, "ui_panel");
             UiKit.SpriteButton(_ui, "M1", 470, 322, 340, 44, "혼자 하기 (1 vs 1 봇)", () => OnStart?.Invoke(1), "ui_button_green", 17);
             UiKit.SpriteButton(_ui, "M2", 470, 374, 340, 44, "2 vs 2 (봇 팀원과 함께)", () => OnStart?.Invoke(2), "ui_button", 17);
             UiKit.SpriteButton(_ui, "M3", 470, 426, 340, 44, "3 vs 3 (봇 팀원 둘과 함께)", () => OnStart?.Invoke(3), "ui_button", 17);
-            UiKit.SpriteButton(_ui, "How", 470, 486, 164, 40, "게임 방법", ShowHowTo, "ui_button_blue", 14);
-            UiKit.SpriteButton(_ui, "Recipes", 646, 486, 164, 40, "합성표", ShowRecipes, "ui_button_blue", 14);
-            UiKit.SpriteButton(_ui, "Sound", 470, 536, 164, 40, "소리 설정", ShowSound, "ui_button_grey", 14);
-            UiKit.SpriteButton(_ui, "Quit", 646, 536, 164, 40, "종료", () => Application.Quit(), "ui_button_grey", 14);
-            UiKit.OutlinedLabel(_ui, "Ver", 0, 690, 1270, 20, $"쪼꼬미 공성전 v0.4 · 전적 {GameSession.Wins}승 {GameSession.MatchesPlayed - GameSession.Wins}패", 11, TextAnchor.MiddleRight, new Color(1, 1, 1, 0.85f));
+            UiKit.SpriteButton(_ui, "Online", 470, 478, 340, 44, "온라인 대전 (친구와 LAN/IP 연결)", () => OnOnline?.Invoke(), "ui_button_blue", 16);
+            UiKit.SpriteButton(_ui, "How", 470, 532, 164, 40, "게임 방법", ShowHowTo, "ui_button_grey", 14);
+            UiKit.SpriteButton(_ui, "Recipes", 646, 532, 164, 40, "합성표", ShowRecipes, "ui_button_grey", 14);
+            UiKit.SpriteButton(_ui, "Sound", 470, 580, 164, 40, "소리 설정", ShowSound, "ui_button_grey", 14);
+            UiKit.SpriteButton(_ui, "Quit", 646, 580, 164, 40, "종료", () => Application.Quit(), "ui_button_grey", 14);
+            UiKit.OutlinedLabel(_ui, "Ver", 0, 690, 1270, 20, $"쪼꼬미 공성전 v0.5 · 전적 {GameSession.Wins}승 {GameSession.MatchesPlayed - GameSession.Wins}패", 11, TextAnchor.MiddleRight, new Color(1, 1, 1, 0.85f));
             _popup = UiKit.SpritePanel(_ui, "Popup", 190, 60, 900, 600, "ui_panel").transform;
             _popup.gameObject.SetActive(false);
             Sfx.Music("bgm_title");
@@ -93,6 +95,7 @@ namespace LaneBattle.Game
                 "■ 합성  같은 타워 3개 → ★2 (공격 ×2.2), ★2 3개 → ★3 (공격 ×5). 합성표의 두 타워 → 새 타워. 타워를 클릭해서 한다.\n" +
                 "   시너지: 같은 계열(숲·불·기계) 3/5개, 같은 줄 같은 직업 2개. 5초 안에 같은 유닛 3마리를 보내면 무리 시너지.\n\n" +
                 "■ 재미 요소  3:00·6:00에 증강 선택(10초 정지). 4:30·7:30에 이벤트 시간대(30초 전 예고). 비밀 미션은 시작 때 하나.\n\n" +
+                "■ 온라인  한 명이 [방 만들기], 나머지는 그 주소로 [참가]. 호스트가 인원과 팀을 정하고 시작. 빈 자리는 봇.\n\n" +
                 "■ 조작  타워 상점 클릭 또는 Q~O, 빈 칸 클릭 = 짓기, 타워 클릭 = 강화/판매/합치기/합성, 우클릭 = 판매,\n" +
                 "   D = 뽑기, 스페이스 = 정지, 1/2/3 = 배속, ESC = 메뉴.";
             UiKit.Label(_popup, "Body", 40, 56, 820, 490, text, 13, TextAnchor.UpperLeft, UiKit.Ink);

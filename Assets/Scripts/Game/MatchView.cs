@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using LaneBattle.Core.Net;
 using LaneBattle.Core.Wave;
 using UnityEngine;
 using UnityEngine.EventSystems;
@@ -20,7 +21,9 @@ namespace LaneBattle.Game
         public int SelectedTowerId = 1;      // 상점에서 고른 타워 정의
         public bool BotPlaysHuman;
         public System.Action OnExit;         // 타이틀로
-        public const int Me = 0, Enemy = 1;
+        public int MyTeam = 0, MyPlayer = 0;
+        public int EnemyTeam => 1 - MyTeam;
+        public NetSession Net;               // 온라인이면 락스텝 세션 (명령은 여기로, 진행은 턴이 와야)
 
         LaneRenderer _myLane, _enemyLane;
         readonly List<MatchCommand> _pending = new List<MatchCommand>();
@@ -32,7 +35,8 @@ namespace LaneBattle.Game
         readonly List<Button> _shopButtons = new List<Button>();
         readonly List<Image> _shopImages = new List<Image>();
         int _lastHandVersion = -1, _lastOfferVersion = -1, _lastActionVersion = -1, _selectedTower = -1, _lastShopGold = -1;
-        bool _paused, _menuOpen, _recipeOpen, _ended;
+        bool _paused, _menuOpen, _recipeOpen, _ended, _netLost;
+        float _stallTime, _netLostAt;
         float _slowSpeed = 1f;
 
         void Awake()
@@ -51,7 +55,7 @@ namespace LaneBattle.Game
                 if (args[i] == "-matchtime" && float.TryParse(args[i + 1], out float sec)) FastForward(sec);
             foreach (var a in args)
             {
-                if (a == "-select") { foreach (var t in Sim.OwnLane(Me).Towers) if (t.Alive && t.Owner == 0) { SelectTower(t.Id); break; } }
+                if (a == "-select") { foreach (var t in Sim.OwnLane(MyTeam).Towers) if (t.Alive && t.Owner == MyPlayer) { SelectTower(t.Id); break; } }
                 if (a == "-recipes") ToggleRecipes();
                 if (a == "-menu") ToggleMenu();
             }
@@ -76,22 +80,35 @@ namespace LaneBattle.Game
         public void Restart()
         {
             _myLane?.Destroy(); _enemyLane?.Destroy();
-            var cfg = new MatchConfig { PlayersPerTeam = PlayersPerTeam };
-            Sim = new MatchSim(cfg, Seed);
-            _bots = new IMatchAgent[2][];
-            for (int t = 0; t < 2; t++)
+            if (Net != null)
             {
-                _bots[t] = new IMatchAgent[PlayersPerTeam];
-                for (int p = 0; p < PlayersPerTeam; p++)
+                PlayersPerTeam = Net.Start.PlayersPerTeam; Seed = Net.Start.Seed;
+                (MyTeam, MyPlayer) = Net.MyPos;
+                Sim = Net.Sim ?? Net.CreateSim(GameSession.BotAggression);
+                _bots = null;
+                Net.Disconnected += reason => { ShowBanner(reason + " — 타이틀로 돌아갑니다", 999f); _netLost = true; };
+                Net.Log += line => ShowMsg(line, 4f);
+            }
+            else
+            {
+                var cfg = new MatchConfig { PlayersPerTeam = PlayersPerTeam };
+                Sim = new MatchSim(cfg, Seed);
+                _bots = new IMatchAgent[2][];
+                for (int t = 0; t < 2; t++)
                 {
-                    bool human = t == Me && p == 0 && !BotPlaysHuman;
-                    _bots[t][p] = human ? null : new SimpleBot { Aggression = t == Enemy ? GameSession.BotAggression + p * 5 : 55 + p * 10 };
+                    _bots[t] = new IMatchAgent[PlayersPerTeam];
+                    for (int p = 0; p < PlayersPerTeam; p++)
+                    {
+                        bool human = t == MyTeam && p == MyPlayer && !BotPlaysHuman;
+                        _bots[t][p] = human ? null : new SimpleBot { Aggression = t == EnemyTeam ? GameSession.BotAggression + p * 5 : 55 + p * 10 };
+                    }
                 }
             }
             var lane = Sim.Lanes[0].Cfg;
             float gap = lane.Width + 1.6f;
-            _enemyLane = new LaneRenderer(transform, Sim.OwnLane(Enemy), new Vector2(0, gap), false, "상대 라인  (내가 보낸 유닛 →)");
-            _myLane = new LaneRenderer(transform, Sim.OwnLane(Me), Vector2.zero, true, "내 라인  (상대 유닛 →)  빈 칸 클릭: 짓기 · 타워 클릭: 강화/합성");
+            _enemyLane = new LaneRenderer(transform, Sim.OwnLane(EnemyTeam), new Vector2(0, gap), false, "상대 라인  (내가 보낸 유닛 →)" + TeamNames(EnemyTeam));
+            _myLane = new LaneRenderer(transform, Sim.OwnLane(MyTeam), Vector2.zero, true, "내 라인  (상대 유닛 →)  빈 칸 클릭: 짓기 · 타워 클릭: 강화/합성" + TeamNames(MyTeam));
+            _myLane.LocalPlayer = _enemyLane.LocalPlayer = MyPlayer;
             _myLane.Banner += t => ShowBanner(t);
             _myLane.PlaySounds = _enemyLane.PlaySounds = !BotPlaysHuman || !Application.isBatchMode;
             BuildCamera(lane, gap);
@@ -106,6 +123,7 @@ namespace LaneBattle.Game
 
         public void FastForward(float seconds)
         {
+            if (Net != null) return;
             int ticks = Mathf.RoundToInt(seconds * Sim.Cfg.TicksPerSecond);
             for (int i = 0; i < ticks && !Sim.IsOver; i++) StepOnce();
             _myLane.SnapAll(); _enemyLane.SnapAll();
@@ -117,12 +135,26 @@ namespace LaneBattle.Game
             if (Sim == null) return;
             float dt = Time.deltaTime;
             HandleInput();
-            if (!_paused && !Sim.IsOver)
+            if (Net != null)
             {
-                _accumulator += dt * Speed;
+                Net.Poll();
+                if (_pending.Count > 0) { Net.LocalCommands.AddRange(_pending); _pending.Clear(); }
+                if (_netLost) { if (_netLostAt == 0) _netLostAt = Time.time; if (Time.time - _netLostAt > 3f) { OnExit?.Invoke(); return; } }
+            }
+            bool running = Net != null ? !_netLost : !_paused;
+            if (running && !Sim.IsOver)
+            {
+                float speed = Net != null ? 1f : Speed;
+                _accumulator += dt * speed;
                 float tickLen = 1f / Sim.Cfg.TicksPerSecond;
-                int steps = 0;
-                while (_accumulator >= tickLen && steps++ < 8) { _accumulator -= tickLen; StepOnce(); }
+                bool catchUp = Net != null && !Net.IsHost && Net.QueuedTurns > 3;
+                int steps = 0, maxSteps = catchUp ? 16 : 8;
+                if (catchUp) _accumulator = Mathf.Max(_accumulator, tickLen * 2);
+                while (_accumulator >= tickLen && steps++ < maxSteps)
+                {
+                    if (!StepOnce()) { _accumulator = Mathf.Min(_accumulator, tickLen); _stallTime += dt; break; }
+                    _accumulator -= tickLen; _stallTime = 0;
+                }
                 float t = Mathf.Clamp01(_accumulator / tickLen);
                 _myLane.Interpolate(t); _enemyLane.Interpolate(t);
             }
@@ -133,30 +165,50 @@ namespace LaneBattle.Game
             if (HandVersion() != _lastHandVersion) BuildHand();
             if (OfferVersion() != _lastOfferVersion) BuildAugmentPanel();
             if (ActionVersion() != _lastActionVersion) BuildActionPanel();
-            if (Sim.Player(Me, 0).Gold != _lastShopGold) RefreshShop();
+            if (Sim.Player(MyTeam, MyPlayer).Gold != _lastShopGold) RefreshShop();
             if (Sim.IsOver && !_ended) { _ended = true; ShowResult(); }
         }
 
-        void StepOnce()
+        bool StepOnce()
         {
-            if (Sim.Tick % Sim.Cfg.TicksPerSecond == 0)
-                for (int t = 0; t < 2; t++)
-                    for (int p = 0; p < PlayersPerTeam; p++)
-                        _bots[t][p]?.Decide(Sim, t, p, _pending);
             _myLane.BeforeStep(); _enemyLane.BeforeStep();
-            Sim.Step(_pending);
-            _pending.Clear();
+            if (Net != null)
+            {
+                if (!Net.TryStep()) return false;
+            }
+            else
+            {
+                if (Sim.Tick % Sim.Cfg.TicksPerSecond == 0)
+                    for (int t = 0; t < 2; t++)
+                        for (int p = 0; p < PlayersPerTeam; p++)
+                            _bots[t][p]?.Decide(Sim, t, p, _pending);
+                Sim.Step(_pending);
+                _pending.Clear();
+            }
             _myLane.AfterStep(); _enemyLane.AfterStep();
             foreach (var ev in Sim.Events) HandleMatchEvent(ev);
+            return true;
+        }
+
+        string TeamNames(int team)
+        {
+            if (Net == null) return "";
+            var sb = new System.Text.StringBuilder("  [");
+            for (int p = 0; p < PlayersPerTeam; p++)
+            {
+                int pid = Net.Lobby.SlotPlayer[team * PlayersPerTeam + p];
+                sb.Append(pid < 0 ? "봇" : Net.Lobby.NameOf(pid)).Append(p < PlayersPerTeam - 1 ? ", " : "");
+            }
+            return sb.Append(']').ToString();
         }
 
         void HandleMatchEvent(MatchEvent ev)
         {
-            bool mine = ev.Team == Me && ev.Player == 0;
+            bool mine = ev.Team == MyTeam && ev.Player == MyPlayer;
             switch (ev.Type)
             {
                 case MatchEventType.Sent:
-                    if (ev.Team == Enemy) { ShowBanner($"상대가 {WaveCatalog.Attacker(ev.A).Name}를 보냈습니다!"); Sfx.Play("send", 0.5f, 0.9f); }
+                    if (ev.Team == EnemyTeam) { ShowBanner($"상대가 {WaveCatalog.Attacker(ev.A).Name}를 보냈습니다!"); Sfx.Play("send", 0.5f, 0.9f); }
                     else if (mine) Sfx.Play("send", 0.7f);
                     break;
                 case MatchEventType.Drew:
@@ -207,11 +259,11 @@ namespace LaneBattle.Game
                     if (!Sim.IsOver) Sfx.Music("bgm_battle");
                     break;
                 case MatchEventType.MissionDone:
-                    if (ev.Team == Me) { ShowBanner($"★ 비밀 미션 달성: {FunCatalog.MissionName((MissionId)ev.A)}!", 4f); Sfx.Play("mission", 0.9f); }
+                    if (ev.Team == MyTeam) { ShowBanner($"★ 비밀 미션 달성: {FunCatalog.MissionName((MissionId)ev.A)}!", 4f); Sfx.Play("mission", 0.9f); }
                     else ShowMsg("상대가 비밀 미션을 달성했습니다");
                     break;
                 case MatchEventType.GroupSynergy:
-                    if (ev.Team == Me) ShowMsg(ev.B == 1 ? "무리 시너지: 같은 유닛 3마리 → 체력 +20%" : ev.B == 2 ? "무리 시너지: 야수 3 → 속도 +20%" : ev.B == 3 ? "무리 시너지: 공중 3 → 체력 +15%" : ev.B == 4 ? "무리 시너지: 거인 3 → 누수 +1" : "무리 시너지: 암흑 3 → 은신 +1초");
+                    if (ev.Team == MyTeam) ShowMsg(ev.B == 1 ? "무리 시너지: 같은 유닛 3마리 → 체력 +20%" : ev.B == 2 ? "무리 시너지: 야수 3 → 속도 +20%" : ev.B == 3 ? "무리 시너지: 공중 3 → 체력 +15%" : ev.B == 4 ? "무리 시너지: 거인 3 → 누수 +1" : "무리 시너지: 암흑 3 → 은신 +1초");
                     break;
                 case MatchEventType.Merged:
                     if (mine) ShowMsg($"★{ev.B} 합치기 성공! 공격력이 크게 오릅니다");
@@ -236,9 +288,9 @@ namespace LaneBattle.Game
             if (kb != null && !_menuOpen && !Sim.IsOver)
             {
                 if (kb.spaceKey.wasPressedThisFrame) TogglePause();
-                if (kb.digit1Key.wasPressedThisFrame) Speed = 1f;
-                if (kb.digit2Key.wasPressedThisFrame) Speed = 2f;
-                if (kb.digit3Key.wasPressedThisFrame) Speed = 4f;
+                if (kb.digit1Key.wasPressedThisFrame && Net == null) Speed = 1f;
+                if (kb.digit2Key.wasPressedThisFrame && Net == null) Speed = 2f;
+                if (kb.digit3Key.wasPressedThisFrame && Net == null) Speed = 4f;
                 if (kb.dKey.wasPressedThisFrame) Draw();
                 for (int i = 0; i < WaveCatalog.BasicTowers.Length; i++)
                 {
@@ -257,26 +309,26 @@ namespace LaneBattle.Game
             bool left = mouse.leftButton.wasPressedThisFrame, right = mouse.rightButton.wasPressedThisFrame;
             if (!left && !right || overUi) return;
             if (!onSlot) { if (left) SelectTower(-1); return; }
-            var existing = Sim.OwnLane(Me).TowerAt(col, row);
+            var existing = Sim.OwnLane(MyTeam).TowerAt(col, row);
             if (left)
             {
-                if (existing == null) { SelectTower(-1); _pending.Add(MatchCommand.Build(Me, 0, SelectedTowerId, col, row)); }
-                else if (existing.Owner == 0) { SelectTower(existing.Id == _selectedTower ? -1 : existing.Id); Sfx.Play("click", 0.5f); }
+                if (existing == null) { SelectTower(-1); _pending.Add(MatchCommand.Build(MyTeam, MyPlayer, SelectedTowerId, col, row)); }
+                else if (existing.Owner == MyPlayer) { SelectTower(existing.Id == _selectedTower ? -1 : existing.Id); Sfx.Play("click", 0.5f); }
                 else ShowMsg($"팀원 P{existing.Owner + 1}의 타워입니다");
             }
-            else if (existing != null && existing.Owner == 0) { _pending.Add(MatchCommand.Sell(Me, 0, existing.Id)); SelectTower(-1); }
+            else if (existing != null && existing.Owner == MyPlayer) { _pending.Add(MatchCommand.Sell(MyTeam, MyPlayer, existing.Id)); SelectTower(-1); }
         }
 
         void SelectTower(int id) { _selectedTower = id; _myLane.SelectedTowerId = id; }
-        public void Draw() { if (!Sim.IsOver) _pending.Add(MatchCommand.Draw(Me, 0)); }
-        public void SendCard(int handIndex) { if (!Sim.IsOver) _pending.Add(MatchCommand.Send(Me, 0, handIndex)); }
-        public void PickAugment(int index) { _pending.Add(MatchCommand.PickAugment(Me, 0, index)); }
-        public void Upgrade() { if (_selectedTower >= 0) _pending.Add(MatchCommand.Upgrade(Me, 0, _selectedTower)); }
-        public void Sell() { if (_selectedTower >= 0) { _pending.Add(MatchCommand.Sell(Me, 0, _selectedTower)); SelectTower(-1); } }
-        public void Merge() { if (_selectedTower >= 0) { _pending.Add(MatchCommand.Merge(Me, 0, _selectedTower)); SelectTower(-1); } }
-        public void Fuse(int partnerId) { if (_selectedTower >= 0) { _pending.Add(MatchCommand.Fuse(Me, 0, _selectedTower, partnerId)); SelectTower(-1); } }
-        public void Transfer(int toPlayer, int amount) { _pending.Add(MatchCommand.Transfer(Me, 0, toPlayer, amount)); }
-        void TogglePause() { _paused = !_paused; ShowMsg(_paused ? "정지 (스페이스로 계속)" : "계속"); }
+        public void Draw() { if (!Sim.IsOver) _pending.Add(MatchCommand.Draw(MyTeam, MyPlayer)); }
+        public void SendCard(int handIndex) { if (!Sim.IsOver) _pending.Add(MatchCommand.Send(MyTeam, MyPlayer, handIndex)); }
+        public void PickAugment(int index) { _pending.Add(MatchCommand.PickAugment(MyTeam, MyPlayer, index)); }
+        public void Upgrade() { if (_selectedTower >= 0) _pending.Add(MatchCommand.Upgrade(MyTeam, MyPlayer, _selectedTower)); }
+        public void Sell() { if (_selectedTower >= 0) { _pending.Add(MatchCommand.Sell(MyTeam, MyPlayer, _selectedTower)); SelectTower(-1); } }
+        public void Merge() { if (_selectedTower >= 0) { _pending.Add(MatchCommand.Merge(MyTeam, MyPlayer, _selectedTower)); SelectTower(-1); } }
+        public void Fuse(int partnerId) { if (_selectedTower >= 0) { _pending.Add(MatchCommand.Fuse(MyTeam, MyPlayer, _selectedTower, partnerId)); SelectTower(-1); } }
+        public void Transfer(int toPlayer, int amount) { _pending.Add(MatchCommand.Transfer(MyTeam, MyPlayer, toPlayer, amount)); }
+        void TogglePause() { if (Net != null) { ShowMsg("온라인에서는 정지할 수 없습니다"); return; } _paused = !_paused; ShowMsg(_paused ? "정지 (스페이스로 계속)" : "계속"); }
 
         // ─────────────────────────── HUD ───────────────────────────
 
@@ -285,7 +337,7 @@ namespace LaneBattle.Game
 
         int HandVersion()
         {
-            var p = Sim.Player(Me, 0);
+            var p = Sim.Player(MyTeam, MyPlayer);
             int v = p.Hand.Count * 1000 + (p.Gold > 40 ? 40 : p.Gold) + (Sim.ActiveEvent.HasValue ? 7 : 0) + p.FreeSends * 3;
             foreach (var h in p.Hand) v = v * 31 + h;
             return v;
@@ -293,7 +345,7 @@ namespace LaneBattle.Game
 
         int OfferVersion()
         {
-            var p = Sim.Player(Me, 0);
+            var p = Sim.Player(MyTeam, MyPlayer);
             int v = p.Offers.Count * 7 + (Sim.IsPaused ? 1 : 0);
             foreach (var a in p.Offers) v = v * 31 + (int)a + 1;
             return v;
@@ -301,13 +353,13 @@ namespace LaneBattle.Game
 
         int ActionVersion()
         {
-            var t = _selectedTower >= 0 ? Sim.OwnLane(Me).TowerAt(_selectedTower) : null;
+            var t = _selectedTower >= 0 ? Sim.OwnLane(MyTeam).TowerAt(_selectedTower) : null;
             if (t == null) return -1;
             int v = t.Id * 100 + t.Star * 10 + (t.Upgraded ? 1 : 0);
-            var p = Sim.Player(Me, 0);
+            var p = Sim.Player(MyTeam, MyPlayer);
             v = v * 7 + Mathf.Min(p.Gold, 30);
-            var mates = Sim.MergeMates(Me, t); v = v * 3 + (mates.HasValue ? 1 : 0);
-            foreach (var o in Sim.FuseOptions(Me, t)) v = v * 31 + o.result.Id;
+            var mates = Sim.MergeMates(MyTeam, t); v = v * 3 + (mates.HasValue ? 1 : 0);
+            foreach (var o in Sim.FuseOptions(MyTeam, t)) v = v * 31 + o.result.Id;
             return v;
         }
 
@@ -348,9 +400,9 @@ namespace LaneBattle.Game
             _income = UiKit.IconLabel(ui, "Income", 600, 6, 300, 20, "icon_income", "", 13, new Color(0.7f, 1f, 0.7f));
             _team = UiKit.Label(ui, "Team", 600, 28, 400, 18, "", 11, TextAnchor.MiddleLeft, new Color(0.8f, 0.9f, 1f));
             UiKit.SpriteButton(ui, "Recipes", 900, 8, 84, 34, "합성표", ToggleRecipes, "ui_button_blue", 13);
-            UiKit.SpriteButton(ui, "S1", 992, 8, 40, 34, "1배", () => Speed = 1f, "ui_button_grey", 12);
-            UiKit.SpriteButton(ui, "S2", 1036, 8, 40, 34, "2배", () => Speed = 2f, "ui_button_grey", 12);
-            UiKit.SpriteButton(ui, "S4", 1080, 8, 40, 34, "4배", () => Speed = 4f, "ui_button_grey", 12);
+            UiKit.SpriteButton(ui, "S1", 992, 8, 40, 34, "1배", () => { if (Net == null) Speed = 1f; }, "ui_button_grey", 12);
+            UiKit.SpriteButton(ui, "S2", 1036, 8, 40, 34, "2배", () => { if (Net == null) Speed = 2f; }, "ui_button_grey", 12);
+            UiKit.SpriteButton(ui, "S4", 1080, 8, 40, 34, "4배", () => { if (Net == null) Speed = 4f; }, "ui_button_grey", 12);
             UiKit.SpriteButton(ui, "Pause", 1128, 8, 56, 34, "정지", TogglePause, "ui_button_grey", 12);
             UiKit.SpriteButton(ui, "Menu", 1192, 8, 76, 34, "메뉴", ToggleMenu, "ui_button_grey", 13);
 
@@ -407,7 +459,7 @@ namespace LaneBattle.Game
 
         void RefreshShop()
         {
-            var p = Sim.Player(Me, 0);
+            var p = Sim.Player(MyTeam, MyPlayer);
             _lastShopGold = p.Gold;
             for (int i = 0; i < _shopImages.Count; i++)
             {
@@ -423,7 +475,7 @@ namespace LaneBattle.Game
         {
             if (_hand == null) return;
             UiKit.Clear(_hand);
-            var p = Sim.Player(Me, 0);
+            var p = Sim.Player(MyTeam, MyPlayer);
             _lastHandVersion = HandVersion();
             _handTitle.text = $"내 손패 {p.Hand.Count}/{Sim.Cfg.HandMax} — 카드를 누르면 상대 라인으로 보냅니다" + (p.FreeSends > 0 ? $"  (무료 보내기 {p.FreeSends}회)" : "");
             const float cw = 84, ch = 118, gap = 6;
@@ -453,32 +505,32 @@ namespace LaneBattle.Game
             if (_actionPanel == null) return;
             UiKit.Clear(_actionPanel);
             _lastActionVersion = ActionVersion();
-            var t = _selectedTower >= 0 ? Sim.OwnLane(Me).TowerAt(_selectedTower) : null;
+            var t = _selectedTower >= 0 ? Sim.OwnLane(MyTeam).TowerAt(_selectedTower) : null;
             if (t == null)
             {
                 _selectedTower = -1;
                 UiKit.Label(_actionPanel, "Hint", 0, 0, 450, 40, "내 타워를 클릭하면 강화 · 판매 · ★합치기 · 합성을 할 수 있습니다.\n같은 타워 3개 = ★2 (공격 ×2.2), 합성 조합은 [합성표] 참고. 우클릭 = 바로 판매.", 11, TextAnchor.UpperLeft, UiKit.InkSoft);
                 return;
             }
-            var p = Sim.Player(Me, 0);
+            var p = Sim.Player(MyTeam, MyPlayer);
             string star = t.Star >= 2 ? new string('★', t.Star) : "";
             UiKit.Label(_actionPanel, "Name", 0, 0, 450, 18, $"{t.Def.Name} {star}{(t.Upgraded ? " [강화됨]" : "")} — {TowerInfo.Describe(t.Def)}", 11, TextAnchor.MiddleLeft, UiKit.Ink);
             float x = 0;
-            int upCost = Sim.UpgradeCostOf(Me, t);
+            int upCost = Sim.UpgradeCostOf(MyTeam, t);
             var up = UiKit.SpriteButton(_actionPanel, "Up", x, 22, 110, 30, t.Upgraded ? "강화 완료" : $"강화 {upCost}골드", Upgrade, "ui_button_green", 12);
             up.interactable = !t.Upgraded && p.Gold >= upCost; x += 116;
             UiKit.SpriteButton(_actionPanel, "Sell", x, 22, 100, 30, $"판매 +{MatchSim.SellValueOf(t)}", Sell, "ui_button_grey", 12); x += 106;
-            var mates = Sim.MergeMates(Me, t);
+            var mates = Sim.MergeMates(MyTeam, t);
             var mg = UiKit.SpriteButton(_actionPanel, "Merge", x, 22, 110, 30, t.Star >= 3 ? "★★★ 최대" : $"★{t.Star + 1} 합치기", Merge, "ui_button", 12);
             mg.interactable = mates.HasValue; x += 116;
-            var opts = Sim.FuseOptions(Me, t);
+            var opts = Sim.FuseOptions(MyTeam, t);
             float fy = 56;
             if (opts.Count == 0)
                 UiKit.Label(_actionPanel, "NoFuse", 0, fy, 450, 26, t.Def.IsFused ? "합성 타워는 더 합성할 수 없습니다 (같은 것 3개로 ★ 올리기는 가능)" : "합성 상대 없음 — 합성표에서 짝이 되는 타워를 지으세요", 10, TextAnchor.MiddleLeft, UiKit.InkSoft);
             for (int i = 0; i < opts.Count && i < 3; i++)
             {
                 var (partner, result) = opts[i];
-                var partnerTower = Sim.OwnLane(Me).TowerAt(partner);
+                var partnerTower = Sim.OwnLane(MyTeam).TowerAt(partner);
                 UiKit.SpriteButton(_actionPanel, "Fuse" + i, i * 150, fy, 146, 28, $"합성 → {result.Name}", () => Fuse(partner), "ui_button_blue", 11);
             }
         }
@@ -487,7 +539,7 @@ namespace LaneBattle.Game
         {
             if (_augmentPanel == null) return;
             UiKit.Clear(_augmentPanel);
-            var p = Sim.Player(Me, 0);
+            var p = Sim.Player(MyTeam, MyPlayer);
             _lastOfferVersion = OfferVersion();
             bool show = p.Offers.Count > 0 && !BotPlaysHuman;
             _augmentPanel.gameObject.SetActive(show);
@@ -553,7 +605,7 @@ namespace LaneBattle.Game
             _menuOpen = !_menuOpen;
             _menuPanel.gameObject.SetActive(_menuOpen);
             if (!_menuOpen) { _paused = false; return; }
-            _paused = true;
+            _paused = Net == null;
             _menuPanel.SetAsLastSibling();
             UiKit.Clear(_menuPanel);
             var m = _menuPanel;
@@ -566,7 +618,8 @@ namespace LaneBattle.Game
             UiKit.SpriteButton(m, "MusDown", 60, 150, 40, 32, "−", () => { Sfx.MusicVolume -= 0.1f; musT.text = $"음악 {Mathf.RoundToInt(Sfx.MusicVolume * 100)}%"; }, "ui_button_grey", 14);
             musT = UiKit.Label(m, "MusT", 104, 150, 192, 32, $"음악 {Mathf.RoundToInt(Sfx.MusicVolume * 100)}%", 14, TextAnchor.MiddleCenter, Color.white);
             UiKit.SpriteButton(m, "MusUp", 300, 150, 40, 32, "+", () => { Sfx.MusicVolume += 0.1f; musT.text = $"음악 {Mathf.RoundToInt(Sfx.MusicVolume * 100)}%"; }, "ui_button_grey", 14);
-            UiKit.SpriteButton(m, "Restart", 100, 200, 200, 34, "새 판 (다른 시드)", () => { Seed++; ToggleMenu(); Restart(); }, "ui_button_blue", 13);
+            if (Net == null) UiKit.SpriteButton(m, "Restart", 100, 200, 200, 34, "새 판 (다른 시드)", () => { Seed++; ToggleMenu(); Restart(); }, "ui_button_blue", 13);
+            else UiKit.Label(m, "NetInfo", 0, 200, 400, 34, $"온라인 {(Net.IsHost ? "호스트" : "참가자")} · 핑 {Net.PingMs}ms", 13, TextAnchor.MiddleCenter, Color.white);
             UiKit.SpriteButton(m, "Title", 100, 244, 200, 34, "타이틀로", () => { OnExit?.Invoke(); }, "ui_button_grey", 13);
         }
 
@@ -576,26 +629,26 @@ namespace LaneBattle.Game
             r.gameObject.SetActive(true);
             r.SetAsLastSibling();
             UiKit.Clear(r);
-            bool win = Sim.Winner == Me, draw = Sim.Winner < 0;
+            bool win = Sim.Winner == MyTeam, draw = Sim.Winner < 0;
             _banner.text = ""; _msg.text = ""; _bannerLeft = _msgLeft = 0; SelectTower(-1);
             GameSession.MatchesPlayed++; if (win) GameSession.Wins++;
             Sfx.StopMusic();
             Sfx.Play(win ? "win" : "lose", 0.9f, 1f, 0f);
             UiKit.Label(r, "Title", 0, 20, 600, 50, draw ? "무승부" : win ? "승리!" : "패배...", 36, TextAnchor.MiddleCenter, win ? UiKit.Gold : draw ? Color.white : new Color(0.8f, 0.85f, 1f));
             UiKit.Label(r, "Reason", 0, 72, 600, 24, $"({Sim.EndReason})  {Sim.Seconds / 60}:{Sim.Seconds % 60:00}", 14, TextAnchor.MiddleCenter, new Color(0.85f, 0.85f, 0.9f));
-            var my = Sim.OwnLane(Me); var en = Sim.OwnLane(Enemy);
+            var my = Sim.OwnLane(MyTeam); var en = Sim.OwnLane(EnemyTeam);
             int myStars = 0, myFused = 0; foreach (var t in my.Towers) if (t.Alive) { if (t.Star > 1) myStars++; if (t.Def.IsFused) myFused++; }
-            var p = Sim.Player(Me, 0);
+            var p = Sim.Player(MyTeam, MyPlayer);
             string stats =
                 $"내 기지 {my.BaseHp} / 상대 기지 {en.BaseHp}\n" +
                 $"내 라인 처치 {my.Kills} · 누수 {my.Leaked}      상대 라인 처치 {en.Kills} · 누수 {en.Leaked}\n" +
                 $"보낸 유닛 {p.Sent} · 뽑기 {p.Drawn} · 받은 수입 {p.IncomeReceived}\n" +
-                $"팀 인컴 {Sim.Teams[Me].Income} (상대 {Sim.Teams[Enemy].Income}) · ★타워 {myStars} · 합성 타워 {myFused}\n" +
+                $"팀 인컴 {Sim.Teams[MyTeam].Income} (상대 {Sim.Teams[EnemyTeam].Income}) · ★타워 {myStars} · 합성 타워 {myFused}\n" +
                 $"증강: {AugmentList(p)}   미션: {FunCatalog.MissionName(p.Mission)} {(p.MissionDone ? "달성" : "미달성")}";
             UiKit.Label(r, "Stats", 40, 110, 520, 150, stats, 13, TextAnchor.UpperLeft, Color.white);
             UiKit.Label(r, "Record", 0, 270, 600, 20, $"전적 {GameSession.Wins}승 {GameSession.MatchesPlayed - GameSession.Wins}패", 12, TextAnchor.MiddleCenter, new Color(0.8f, 0.8f, 0.9f));
-            UiKit.SpriteButton(r, "Again", 120, 320, 170, 40, "다시 하기", () => { Seed++; Restart(); }, "ui_button_green", 15);
-            UiKit.SpriteButton(r, "Title", 310, 320, 170, 40, "타이틀로", () => OnExit?.Invoke(), "ui_button_grey", 15);
+            if (Net == null) UiKit.SpriteButton(r, "Again", 120, 320, 170, 40, "다시 하기", () => { Seed++; Restart(); }, "ui_button_green", 15);
+            UiKit.SpriteButton(r, "Title", Net == null ? 310 : 215, 320, 170, 40, "타이틀로", () => OnExit?.Invoke(), "ui_button_grey", 15);
         }
 
         static string AugmentList(PlayerEcon p)
@@ -608,7 +661,7 @@ namespace LaneBattle.Game
 
         string MissionText()
         {
-            var p = Sim.Player(Me, 0);
+            var p = Sim.Player(MyTeam, MyPlayer);
             string s = $"비밀 미션 [{FunCatalog.MissionName(p.Mission)}]\n{FunCatalog.MissionDesc(p.Mission)}";
             if (p.MissionDone) s += "\n✔ 달성!";
             if (p.Augments.Count > 0) s += "\n내 증강: " + AugmentList(p);
@@ -617,7 +670,7 @@ namespace LaneBattle.Game
 
         string SynergyText()
         {
-            var lane = Sim.OwnLane(Me);
+            var lane = Sim.OwnLane(MyTeam);
             string tribe = $"숲 {lane.TribeCount[0]}{(lane.Forest5 ? "★★" : lane.Forest3 ? "★" : "")}  불 {lane.TribeCount[1]}{(lane.Fire5 ? "★★" : lane.Fire3 ? "★" : "")}  기계 {lane.TribeCount[2]}{(lane.Machine5 ? "★★" : lane.Machine3 ? "★" : "")}";
             var rows = new List<string>();
             for (int r = 0; r < 3; r++)
@@ -646,7 +699,7 @@ namespace LaneBattle.Game
 
         string IntelText()
         {
-            var p = Sim.Player(Me, 0); var e = Sim.Player(Enemy, 0);
+            var p = Sim.Player(MyTeam, MyPlayer); var e = Sim.Player(EnemyTeam, 0);
             var sb = new System.Text.StringBuilder();
             if (p.Has(AugmentId.Accountant)) sb.Append($"[회계] 상대 골드 {e.Gold}\n");
             if (p.Has(AugmentId.Scout))
@@ -656,7 +709,7 @@ namespace LaneBattle.Game
                 if (e.Hand.Count == 0) sb.Append("없음");
                 sb.Append('\n');
             }
-            int enemyAA = 0; foreach (var t in Sim.OwnLane(Enemy).Towers) if (t.Alive && (t.Def.AntiAir || t.ForceAntiAir)) enemyAA++;
+            int enemyAA = 0; foreach (var t in Sim.OwnLane(EnemyTeam).Towers) if (t.Alive && (t.Def.AntiAir || t.ForceAntiAir)) enemyAA++;
             sb.Append($"상대 대공 타워 {enemyAA}개 · 상대 증강 {e.Augments.Count}개");
             return sb.ToString();
         }
@@ -665,7 +718,7 @@ namespace LaneBattle.Game
         {
             if (PlayersPerTeam == 1) return "";
             var sb = new System.Text.StringBuilder("팀원: ");
-            for (int i = 1; i < PlayersPerTeam; i++) { var q = Sim.Player(Me, i); sb.Append($"P{i + 1} 골드 {q.Gold} 손패 {q.Hand.Count}   "); }
+            for (int i = 0; i < PlayersPerTeam; i++) { if (i == MyPlayer) continue; var q = Sim.Player(MyTeam, i); sb.Append($"P{i + 1} 골드 {q.Gold} 손패 {q.Hand.Count}   "); }
             return sb.ToString();
         }
 
@@ -674,19 +727,19 @@ namespace LaneBattle.Game
             if (_time == null || Sim == null) return;
             _mission.text = MissionText(); _synergy.text = SynergyText(); _eventText.text = EventText(); _intel.text = IntelText(); _team.text = TeamText();
             RefreshAugmentTitle();
-            var p = Sim.Player(Me, 0);
-            var my = Sim.OwnLane(Me); var en = Sim.OwnLane(Enemy);
+            var p = Sim.Player(MyTeam, MyPlayer);
+            var my = Sim.OwnLane(MyTeam); var en = Sim.OwnLane(EnemyTeam);
             int sec = Sim.Seconds;
             int nextIn = my.TicksToNextWave / my.Cfg.TicksPerSecond;
             int incomeIn = Sim.Cfg.IncomeIntervalSeconds - (sec % Sim.Cfg.IncomeIntervalSeconds);
-            _time.text = $"{sec / 60}:{sec % 60:00} / {Sim.Cfg.MatchSeconds / 60}:00" + (Speed != 1f ? $" ×{Speed:0}" : "") + (_paused && !_menuOpen ? " ■" : "") + (Sim.IsPaused ? " 증강" : "");
+            _time.text = $"{sec / 60}:{sec % 60:00} / {Sim.Cfg.MatchSeconds / 60}:00" + (Speed != 1f && Net == null ? $" ×{Speed:0}" : "") + (_paused && !_menuOpen ? " ■" : "") + (Sim.IsPaused ? " 증강" : "") + (Net != null ? $"  핑 {Mathf.Max(0, Net.PingMs)}" : "") + (_stallTime > 0.5f ? " 대기…" : "") + (Net != null && Net.DesyncInfo != null ? " [어긋남!]" : "");
             _wave.text = my.NextWaveIndex < WaveCatalog.BaseWaves.Length ? $"다음 웨이브 {my.NextWaveIndex + 1} ({nextIn}초): {WaveCatalog.Describe(my.NextWaveIndex)}" : "기본 웨이브 끝 — 이제 보내기 싸움";
             _myHp.text = $"내 기지 {my.BaseHp}/{my.Cfg.BaseHp}";
             _enemyHp.text = $"상대 기지 {en.BaseHp}/{en.Cfg.BaseHp}";
             _myHpBar.rectTransform.sizeDelta = new Vector2(120f * Mathf.Clamp01(my.BaseHp / (float)my.Cfg.BaseHp), 8);
             _enemyHpBar.rectTransform.sizeDelta = new Vector2(120f * Mathf.Clamp01(en.BaseHp / (float)en.Cfg.BaseHp), 8);
             _gold.text = $"{p.Gold}";
-            _income.text = $"팀 인컴 {Sim.Teams[Me].Income} (상대 {Sim.Teams[Enemy].Income}) · 다음 수입 {incomeIn}초 · 내 라인 처치 {my.Kills} 누수 {my.Leaked}";
+            _income.text = $"팀 인컴 {Sim.Teams[MyTeam].Income} (상대 {Sim.Teams[EnemyTeam].Income}) · 다음 수입 {incomeIn}초 · 내 라인 처치 {my.Kills} 누수 {my.Leaked}";
         }
     }
 }

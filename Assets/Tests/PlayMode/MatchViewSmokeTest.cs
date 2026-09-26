@@ -57,6 +57,38 @@ namespace LaneBattle.PlayTests
             Object.Destroy(go);
         }
 
+        [UnityTest]
+        public IEnumerator OnlineLobbyAndHostMatchRunOverLoopback()
+        {
+            var go = new GameObject("GameFlow");
+            var flow = go.AddComponent<GameFlow>();
+            yield return null;
+            flow.ShowOnline();
+            yield return null;
+            Assert.IsNotNull(Object.FindFirstObjectByType<OnlineLobby>());
+            // 루프백으로 호스트+클라 세션을 만들고 호스트 쪽 경기 화면을 띄운다
+            var ht = new LaneBattle.Core.Net.LoopbackTransport(); var ct = new LaneBattle.Core.Net.LoopbackTransport();
+            var host = new LaneBattle.Core.Net.NetSession(ht, true, "h"); var client = new LaneBattle.Core.Net.NetSession(ct, false, "c");
+            LaneBattle.Core.Net.LoopbackTransport.Connect(ht, ct);
+            client.Poll(); host.Poll(); client.Poll();
+            host.SetPlayersPerTeam(2); client.Poll();
+            host.StartMatch(5); client.Poll();
+            flow.StartOnlineMatch(host);
+            yield return null;
+            var view = Object.FindFirstObjectByType<MatchView>();
+            Assert.IsNotNull(view);
+            Assert.AreEqual(2, view.PlayersPerTeam);
+            for (int i = 0; i < 40; i++) yield return null;
+            Assert.Greater(view.Sim.Tick, 5, "호스트는 스스로 턴을 만들어 진행한다");
+            var cs = client.CreateSim();
+            int guard = 0;
+            while (cs.Tick < view.Sim.Tick && guard++ < 10000) { client.Poll(); if (!client.TryStep()) break; }
+            Assert.AreEqual(view.Sim.Tick, cs.Tick);
+            Assert.AreEqual(view.Sim.Hash(), cs.Hash(), "클라는 받은 턴만으로 같은 상태가 된다");
+            Object.Destroy(go);
+            client.Dispose();
+        }
+
         [Test]
         public void EverySpriteAndSoundTheGameUsesExists()
         {
