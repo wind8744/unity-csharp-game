@@ -15,7 +15,7 @@ from PIL import Image, ImageDraw, ImageFont
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 OUT = os.path.join(ROOT, "Assets", "Resources", "Sprites")
-SCRATCH = ("/private/tmp/claude-501/-Users-jihyun-Projects-MyFirstGame/"
+SCRATCH = ("/private/tmp/claude-501/-Users-jihyun-Projects-unity-csharp-game/"
            "17b25d7a-8120-409c-bb05-16df738f6e9b/scratchpad/art")
 CONTACT = os.path.join(SCRATCH, "contact.png")
 
@@ -692,9 +692,202 @@ def tower_17(c, f):
     mouth(c, 24, 36, "o" if atk else "smile")
 
 
+# --- tier-3 fusions (18-21): taller silhouettes, gold trim, glowing gems, floating sparks ---
+def tower_18(c, f):
+    """유성 저격수: hooded fire archer on a hovering drone platform with a long scoped bow."""
+    atk = f == 2
+    shadow(c, 22, 46, 13, 2)
+    c.oy = -1 if f == 1 else 0
+    # hover platform (drone disc with brass band and thruster glow)
+    c.rect(11, 46, 14, 47, P.cyan, False); c.rect(30, 46, 33, 47, P.cyan, False)
+    c.ell(5, 40, 39, 46, P.steel_l, P.steel_d)
+    c.rect(7, 42, 37, 43, P.brass, False)
+    c.px(9, 41, P.white); c.px(10, 41, P.white)
+    c.rect(20, 44, 24, 45, P.red if f == 0 else P.red_d, False)     # status light
+    # archer
+    c.rect(8, 20, 13, 34, P.bark)                       # quiver
+    for i in range(3):
+        c.px(9 + i * 2, 19, P.yellow)
+    feet(c, 22, 39, 4, P.brown)
+    blob(c, 22, 31, 9, 7, P.orange_d)                   # tunic
+    c.rect(14, 32, 30, 33, P.brass, False)              # gold belt
+    c.px(22, 32, P.yellow)
+    c.oline([(29, 28), (36, 27)], P.orange_d, 3)        # arm
+    bow(c, 37, 26, 22, drawn=atk, fire=True, phase=f)   # long sniper bow
+    c.rect(38, 18, 43, 20, P.steel_d)                   # scope
+    c.px(43, 19, P.cyan)
+    blob(c, 37, 26, 2, 2, P.skin)                       # hand
+    hood_face(c, 22, 18, P.red_d, P.skin, 11)
+    c.rect(21, 7, 23, 9, P.yellow, P.brass_d)           # forehead gem
+    flame(c, 25, 6, 3, 5, f, ol=P.orange_d)             # flame plume on hood
+    eyes(c, 22, 19, 3, style="blink" if f == 1 else "normal")
+    blush(c, 22, 21, 5)
+    mouth(c, 22, 23, "smile")
+    if atk:
+        blob(c, 44, 26, 6, 6, (255, 200, 90, 110), False)
+        spark4(c, 45, 26, 5, P.yellow_l, False)
+        blob(c, 45, 26, 1, 1, P.white, False)
+        c.px(41, 21, P.yellow); c.px(39, 32, P.yellow); c.px(35, 20, P.yellow_l)
+    else:
+        c.px(44, 22 + f, P.yellow_l); c.px(46, 30 - f, P.yellow); c.px(45, 14 + f, P.yellow_l)
+    c.oy = 0
+
+
+def tower_19(c, f):
+    """가시 거목: thorny tree stump with steel-plated spikes and a pink flower on top."""
+    atk = f == 2
+    L = 8 if atk else 5
+    # spikes (drawn first so bases hide under the body)
+    for by in (26, 34, 41):
+        dy = -3 if by == 26 else (3 if by == 41 else 0)
+        c.poly([(10, by - 2), (10 - L, by + dy), (10, by + 2)], P.steel_l, P.steel_d)
+        c.poly([(38, by - 2), (38 + L, by + dy), (38, by + 2)], P.steel_l, P.steel_d)
+    c.poly([(12, 21), (9 - L // 2, 14 - L // 2), (16, 19)], P.steel_l, P.steel_d)
+    c.poly([(36, 21), (39 + L // 2, 14 - L // 2), (32, 19)], P.steel_l, P.steel_d)
+    # roots
+    c.ell(4, 42, 16, 47, P.bark, dark(P.bark))
+    c.ell(32, 42, 44, 47, P.bark, dark(P.bark))
+    # stump body
+    c.rrect(9, 19, 39, 45, 5, P.brown, dark(P.brown))
+    c.line([(15, 26), (14, 40)], P.bark); c.line([(33, 25), (34, 39)], P.bark)
+    c.line([(24, 40), (24, 43)], P.bark)
+    # steel plates with brass rivets
+    for by in (26, 34, 41):
+        for x0 in (9, 36):
+            c.rect(x0, by - 3, x0 + 3, by + 3, P.steel, P.steel_d)
+            c.px(x0 + 1, by - 2, P.brass); c.px(x0 + 1, by + 2, P.brass)
+    c.rect(11, 21, 37, 22, P.brass, False)              # gold band under the rim
+    # cut surface with growth rings
+    c.ell(9, 13, 39, 23, P.wood_l, P.bark)
+    c.arc(14, 15, 34, 21, 0, 360, P.tan_d)
+    c.arc(19, 16, 29, 20, 0, 360, P.tan_d)
+    # face
+    eyes(c, 24, 31, 5, style="angry" if atk else ("blink" if f == 1 else "normal"))
+    blush(c, 24, 33, 8)
+    mouth(c, 24, 36, "grin" if atk else "smile")
+    # flower (bobs on idle B)
+    c.oy = -1 if f == 1 else 0
+    c.line([(24, 16), (24, 11)], P.green_d)
+    leaf(c, 24, 14, P.green, size=4)
+    leaf(c, 24, 13, P.green, flip=True, size=4)
+    for i in range(5):
+        a = math.radians(i * 72 - 90)
+        blob(c, round(24 + 4 * math.cos(a)), round(7 + 4 * math.sin(a)), 3, 3, P.pink, dark(P.pink, 0.55))
+    blob(c, 24, 7, 3, 2, P.yellow, P.brass_d)
+    c.px(23, 6, P.yellow_l)
+    c.oy = 0
+    # floating sparks / thorn projectiles
+    if atk:
+        for (x0, y0, x1, y1) in ((5, 9, 2, 5), (43, 9, 46, 5), (14, 6, 11, 2), (34, 6, 37, 2), (2, 22, 0, 18), (46, 22, 47, 18)):
+            c.oline([(x0, y0), (x1, y1)], P.wood, 1, P.bark)
+        spark4(c, 6, 3, 2, P.green_l, False); spark4(c, 42, 3, 2, P.green_l, False)
+    else:
+        spark4(c, 4, 12 + f, 2, P.green_l, False)
+        spark4(c, 44, 10 - f, 2, P.green_l, False)
+
+
+def tower_20(c, f):
+    """화산 심장: volcano body with a molten heart window and a flame-spirit face on top."""
+    atk = f == 2
+    rock = (132, 90, 86)
+    shadow(c, 24, 46, 14, 2)
+    if atk:
+        blob(c, 24, 10, 15, 12, (255, 190, 80, 90), False)
+    # volcano slopes
+    c.poly([(15, 17), (33, 17), (46, 46), (2, 46)], rock, dark(rock))
+    c.line([(20, 19), (21, 30)], light(rock, 0.25)); c.line([(11, 36), (8, 44)], light(rock, 0.25))
+    # lava streaks + drips
+    c.line([(17, 19), (12, 30), (10, 39)], P.orange, 2)
+    c.line([(31, 19), (36, 28), (39, 37)], P.orange, 2)
+    c.px(14, 25, P.yellow); c.px(35, 26, P.yellow)
+    d = 1 if f == 1 else 0
+    c.ell(9, 39 + d, 11, 43 + d, P.orange, P.orange_d)
+    c.ell(38, 37 + d, 40, 41 + d, P.orange, P.orange_d)
+    c.px(10, 40 + d, P.yellow); c.px(39, 38 + d, P.yellow)
+    # chest window with glowing heart (brass frame)
+    c.rrect(17, 25, 31, 40, 3, P.ink, P.brass)
+    for (x, y) in ((17, 25), (31, 25), (17, 40), (31, 40)):
+        c.px(x, y, P.yellow)
+    if f == 0:
+        blob(c, 24, 32, 5, 5, (255, 180, 70, 130), False)
+    else:
+        blob(c, 24, 32, 6, 6, (255, 220, 110, 190), False)
+    heart(c, 24, 32, 4, P.orange if f == 0 else P.yellow)
+    c.px(24, 32, P.yellow_l if f == 0 else P.white)
+    # crater + flame spirit
+    c.ell(14, 14, 34, 20, dark(rock, 0.6), dark(rock))
+    c.ell(16, 15, 32, 19, P.orange_d, False)
+    if atk:
+        flame(c, 24, 19, 20, 19, f, core=P.white)
+    else:
+        flame(c, 24, 19, 16, 18, f)
+    eyes(c, 24, 11, 3, style="angry" if atk else ("blink" if f == 1 else "normal"))
+    blush(c, 24, 13, 5)
+    mouth(c, 24, 15, "o" if atk else "smile")
+    # eruption sparks / floating embers
+    if atk:
+        for (x, y, r) in ((8, 7, 3), (40, 5, 3), (13, 1, 2), (36, 1, 2), (4, 16, 2), (44, 14, 2)):
+            spark4(c, x, y, r, P.yellow_l, False)
+        c.px(10, 12, P.orange); c.px(38, 10, P.orange); c.px(24, 0, P.yellow)
+    else:
+        c.px(6, 24 + f, P.yellow); c.px(42, 18 - f, P.yellow); c.px(38, 8 + f, P.yellow_l); c.px(9, 6 - f, P.yellow_l)
+
+
+def tower_21(c, f):
+    """천둥 요새: fortress turret with lightning rod, twin brass cannons and a tethered balloon."""
+    atk = f == 2
+    bob = -1 if f == 1 else 0
+    # tethered balloon (top-left)
+    c.line([(9, 13 + bob), (12, 25)], P.grey_l)
+    blob(c, 9, 7 + bob, 5, 4, P.blue)
+    c.line([(9, 3 + bob), (9, 11 + bob)], dark(P.blue, 0.7))
+    c.px(6, 5 + bob, P.blue_l); c.px(7, 4 + bob, P.blue_l)
+    c.rect(8, 12 + bob, 10, 13 + bob, P.wood, P.bark)
+    # lightning rod + roof + tower
+    c.line([(24, 4), (24, 12)], P.steel_l)
+    c.px(24, 3, P.yellow)
+    if f == 1:
+        spark4(c, 24, 3, 1, P.yellow_l, False)
+    blob(c, 24, 12, 1, 1, P.brass, False)
+    c.poly([(17, 17), (31, 17), (24, 11)], P.navy, dark(P.navy))
+    c.rect(19, 17, 29, 29, P.steel_l, P.steel_d)
+    c.rect(23, 20, 25, 23, P.navy, False)
+    c.rect(19, 25, 29, 26, P.brass, False)
+    # cannon mounts + brass barrels (recoil on attack)
+    r = 1 if atk else 0
+    c.rect(8, 25, 15, 31, P.steel_d, dark(P.steel_d))
+    c.rect(33, 25, 40, 31, P.steel_d, dark(P.steel_d))
+    c.rect(4 - r, 23, 14 - r, 28, P.brass, P.brass_d)
+    c.rect(4 - r, 22, 6 - r, 29, P.brass_d, dark(P.brass))
+    c.line([(7 - r, 24), (12 - r, 24)], light(P.brass, 0.5))
+    c.rect(34 + r, 23, 44 + r, 28, P.brass, P.brass_d)
+    c.rect(42 + r, 22, 44 + r, 29, P.brass_d, dark(P.brass))
+    c.line([(36 + r, 24), (41 + r, 24)], light(P.brass, 0.5))
+    # fortress base with crenellations
+    for x in (8, 14, 31, 37):
+        c.rect(x, 26, x + 3, 30, P.steel, P.steel_d)
+    c.rrect(6, 29, 42, 46, 3, P.steel, P.steel_d)
+    c.rect(7, 30, 41, 30, P.steel_l, False)
+    for (x, y) in ((8, 32), (40, 32), (8, 44), (40, 44)):
+        c.px(x, y, P.brass)
+    c.rect(10, 34, 13, 37, P.navy, False); c.rect(35, 34, 38, 37, P.navy, False)   # arrow slits
+    eyes(c, 24, 37, 4, style="blink" if f == 1 else "normal")
+    blush(c, 24, 39, 7)
+    mouth(c, 24, 42, "o" if atk else "smile")
+    if atk:
+        c.line([(27, 4), (32, 7), (28, 9), (34, 13)], P.yellow, 2)
+        c.line([(21, 4), (16, 7), (20, 9), (14, 13)], P.yellow, 2)
+        spark4(c, 24, 3, 3, P.yellow_l, False)
+        spark4(c, 2, 25, 3, P.yellow_l, False); c.px(3, 25, P.orange)
+        spark4(c, 46, 25, 3, P.yellow_l, False); c.px(45, 25, P.orange)
+        c.px(36, 15, P.yellow_l); c.px(12, 16, P.yellow_l)
+    else:
+        c.px(30, 8 - f, P.yellow_l); c.px(18, 9 + f, P.yellow_l)
+
+
 TOWERS = {1: tower_1, 2: tower_2, 3: tower_3, 4: tower_4, 5: tower_5, 6: tower_6, 7: tower_7, 8: tower_8,
           9: tower_9, 10: tower_10, 11: tower_11, 12: tower_12, 13: tower_13, 14: tower_14, 15: tower_15,
-          16: tower_16, 17: tower_17}
+          16: tower_16, 17: tower_17, 18: tower_18, 19: tower_19, 20: tower_20, 21: tower_21}
 
 # --------------------------------------------------------------------------
 # creeps  (walk left->right, so they face right; f: 0/1 walk frames)
@@ -1746,7 +1939,7 @@ def build():
 
 def expected_names():
     names = []
-    for t in range(1, 18):
+    for t in range(1, 22):
         names += [f"tower_{t}_0", f"tower_{t}_1", f"tower_{t}_atk"]
     for k in range(1, 16):
         names += [f"creep_{k}_0", f"creep_{k}_1"]
@@ -1824,6 +2017,9 @@ def main():
     legends = tuple(f"creep_{k}_" for k in (12, 13, 14, 15))
     sel = [(n, im) for n, im in SPRITES if n.startswith(legends)]
     contact_sheet(sel, os.path.join(SCRATCH, "contact_legends.png"), scale=4, max_w=1400)
+    tier3 = tuple(f"tower_{t}_" for t in (18, 19, 20, 21))
+    sel = [(n, im) for n, im in SPRITES if n.startswith(tier3)]
+    contact_sheet(sel, os.path.join(SCRATCH, "contact_tier3.png"), scale=4, max_w=1400)
     print("contact sheet:", CONTACT)
 
 

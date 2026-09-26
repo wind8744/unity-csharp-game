@@ -146,7 +146,7 @@ namespace LaneBattle.Game
                 "   [돌격 강화]는 팀 공유: 레벨마다 우리 팀이 보내는 유닛 체력 +6%, 속도 +2% (25, 40, 55… 골드, 최대 6).\n" +
                 "   상대가 보낸 유닛은 내 라인에 보이니, 오는 것을 보고 타워를 짓고 남는 골드로 보내자.\n\n" +
                 "■ 경제  15초마다 팀 인컴이 팀원에게 똑같이 나뉘어 들어온다. 처치 1골드. 판매는 80% 환불.\n\n" +
-                "■ 합성  같은 타워 3개 → ★2 (공격 ×2.2), ★2 3개 → ★3 (공격 ×5). 합성표의 두 타워 → 새 타워. 타워를 클릭해서 한다.\n" +
+                "■ 합성  같은 타워 3개 → ★2 (공격 ×2.2), ★2 3개 → ★3 (공격 ×5). 합성표의 두 타워 → 새 타워, 그 둘을 다시 합치면 3단계. 타워를 클릭해서 한다.\n" +
                 "   시너지: 같은 계열(숲·불·기계) 3/5개, 같은 직업 타워를 옆에 붙이기. 5초 안에 같은 유닛 3마리를 보내면 무리 시너지.\n\n" +
                 "■ 재미 요소  레벨 1·3·6·9에 닿으면 증강 3장 중 1장(20초 안에, 게임은 계속). 3:30·6:00에 이벤트 시간대(30초 전 예고). 비밀 미션은 시작 때 하나.\n\n" +
                 "■ 온라인  한 명이 [방 만들기], 나머지는 그 주소로 [참가]. 호스트가 인원과 팀을 정하고 시작. 빈 자리는 봇.\n\n" +
@@ -157,22 +157,23 @@ namespace LaneBattle.Game
 
         void ShowRecipes()
         {
-            OpenPopup("합성표 — 재료 두 타워를 내 라인에 지은 뒤 한쪽을 클릭해 [합성]");
+            OpenPopup("합성표 — 재료 두 타워를 내 진영에 지은 뒤 한쪽을 클릭해 [합성]. 2단계 둘을 다시 합치면 3단계");
             int i = 0;
-            foreach (var f in WaveCatalog.FusedTowers)
+            foreach (var f in WaveCatalog.RecipeTowers)
             {
-                float x = 40 + (i % 2) * 420, y = 60 + (i / 2) * 118;
+                float x = 40 + (i % 2) * 420, y = 56 + (i / 2) * 82;
                 var a = WaveCatalog.Tower(f.RecipeA); var b = WaveCatalog.Tower(f.RecipeB);
-                UiKit.SpritePanel(_popup, "Row" + i, x, y, 400, 108, "ui_slot");
-                UiKit.IconSprite(_popup, "A" + i, x + 10, y + 10, 56, 56, Art.Tower(a.Id, 0));
-                UiKit.Label(_popup, "An" + i, x - 4, y + 70, 84, 30, a.Name, 11, TextAnchor.UpperCenter, UiKit.InkSoft);
-                UiKit.Label(_popup, "Plus" + i, x + 70, y + 18, 24, 40, "+", 26, TextAnchor.MiddleCenter, UiKit.Ink);
-                UiKit.IconSprite(_popup, "B" + i, x + 98, y + 10, 56, 56, Art.Tower(b.Id, 0));
-                UiKit.Label(_popup, "Bn" + i, x + 84, y + 70, 84, 30, b.Name, 11, TextAnchor.UpperCenter, UiKit.InkSoft);
-                UiKit.Label(_popup, "Arrow" + i, x + 160, y + 18, 30, 40, "→", 26, TextAnchor.MiddleCenter, UiKit.Ink);
-                UiKit.IconSprite(_popup, "R" + i, x + 196, y + 6, 64, 64, Art.Tower(f.Id, 0));
-                UiKit.Label(_popup, "Rn" + i, x + 266, y + 8, 130, 22, f.Name, 15, TextAnchor.MiddleLeft, UiKit.Ink);
-                UiKit.Label(_popup, "Rd" + i, x + 266, y + 32, 130, 74, TowerInfo.Describe(f), 10, TextAnchor.UpperLeft, UiKit.InkSoft);
+                UiKit.SpritePanel(_popup, "Row" + i, x, y, 400, 76, f.Tier >= 3 ? "ui_panel_dark" : "ui_slot");
+                var ink = f.Tier >= 3 ? Color.white : UiKit.Ink; var soft = f.Tier >= 3 ? new Color(0.85f, 0.85f, 0.9f) : UiKit.InkSoft;
+                UiKit.IconSprite(_popup, "A" + i, x + 8, y + 4, 42, 42, Art.Tower(a.Id, 0));
+                UiKit.Label(_popup, "An" + i, x - 4, y + 48, 66, 26, a.Name, 9, TextAnchor.UpperCenter, soft);
+                UiKit.Label(_popup, "Plus" + i, x + 54, y + 10, 20, 30, "+", 20, TextAnchor.MiddleCenter, ink);
+                UiKit.IconSprite(_popup, "B" + i, x + 78, y + 4, 42, 42, Art.Tower(b.Id, 0));
+                UiKit.Label(_popup, "Bn" + i, x + 66, y + 48, 66, 26, b.Name, 9, TextAnchor.UpperCenter, soft);
+                UiKit.Label(_popup, "Arrow" + i, x + 124, y + 10, 26, 30, "→", 20, TextAnchor.MiddleCenter, ink);
+                UiKit.IconSprite(_popup, "R" + i, x + 154, y + 2, 48, 48, Art.Tower(f.Id, 0));
+                UiKit.Label(_popup, "Rn" + i, x + 208, y + 4, 190, 20, (f.Tier >= 3 ? "★3단계  " : "") + f.Name, 13, TextAnchor.MiddleLeft, f.Tier >= 3 ? UiKit.Gold : ink);
+                UiKit.Label(_popup, "Rd" + i, x + 208, y + 24, 188, 52, TowerInfo.Describe(f), 9, TextAnchor.UpperLeft, soft);
                 i++;
             }
         }

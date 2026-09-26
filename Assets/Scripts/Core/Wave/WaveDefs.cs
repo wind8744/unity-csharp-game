@@ -68,11 +68,19 @@ namespace LaneBattle.Core.Wave
             new TowerDef { Id = 15, Name = "저격 드론",   Cost = 14, Atk = 22, AttacksPer10s = 5,  Range10 = 55, Tribe = DefTribe.Machine, Job = DefJob.Archer,  AntiAir = true, Tier = 2, RecipeA = 1, RecipeB = 9 },
             new TowerDef { Id = 16, Name = "철갑 가시",   Cost = 21, Atk = 18, AttacksPer10s = 5,  Range10 = 20, Tribe = DefTribe.Machine, Job = DefJob.Warrior, SplashRadius10 = 8, SlowPercent = 40, SlowSeconds = 2, GiantMultiplier = 2, Tier = 2, RecipeA = 2, RecipeB = 8 },
             new TowerDef { Id = 17, Name = "화염 정령",   Cost = 19, Atk = 6,  AttacksPer10s = 8,  Range10 = 25, Tribe = DefTribe.Fire,    Job = DefJob.Mage,    SplashRadius10 = 10, AuraAtkPercent = 20, Tier = 2, RecipeA = 3, RecipeB = 5 },
+            // ── 3단계 (Tier 3): 합성 타워 둘을 다시 합친다. 비용은 재료 합. 문서 v0.4 16절.
+            new TowerDef { Id = 18, Name = "유성 저격수", Cost = 27, Atk = 40, AttacksPer10s = 6,  Range10 = 60, Tribe = DefTribe.Fire,    Job = DefJob.Archer,  AntiAir = true, AirMultiplier = 2, BurnPerSec = 5, BurnSeconds = 3, Tier = 3, RecipeA = 10, RecipeB = 15 },
+            new TowerDef { Id = 19, Name = "가시 거목",   Cost = 36, Atk = 34, AttacksPer10s = 5,  Range10 = 25, Tribe = DefTribe.Forest,  Job = DefJob.Warrior, SplashRadius10 = 20, SlowPercent = 50, SlowSeconds = 2, GiantMultiplier = 2, Tier = 3, RecipeA = 11, RecipeB = 16 },
+            new TowerDef { Id = 20, Name = "화산 심장",   Cost = 36, Atk = 14, AttacksPer10s = 16, Range10 = 30, Tribe = DefTribe.Fire,    Job = DefJob.Mage,    SplashRadius10 = 15, BurnPerSec = 4, BurnSeconds = 4, AuraAtkPercent = 25, Tier = 3, RecipeA = 12, RecipeB = 17 },
+            new TowerDef { Id = 21, Name = "천둥 요새",   Cost = 47, Atk = 45, AttacksPer10s = 4,  Range10 = 50, Tribe = DefTribe.Machine, Job = DefJob.Archer,  AntiAir = true, AirMultiplier = 2, GiantMultiplier = 2, SplashRadius10 = 15, ChainCount = 4, ChainRange10 = 20, ChainPercent = 80, Tier = 3, RecipeA = 13, RecipeB = 14 },
         };
 
         /// <summary>기본 타워만 (상점에 나오는 것).</summary>
         public static readonly TowerDef[] BasicTowers = System.Array.FindAll(Towers, t => t.Tier == 1);
         public static readonly TowerDef[] FusedTowers = System.Array.FindAll(Towers, t => t.Tier == 2);
+        public static readonly TowerDef[] Tier3Towers = System.Array.FindAll(Towers, t => t.Tier == 3);
+        /// <summary>상점에 없는 타워 전부 (2·3단계), 합성표 순서.</summary>
+        public static readonly TowerDef[] RecipeTowers = System.Array.FindAll(Towers, t => t.Tier >= 2);
 
         /// <summary>뽑기 등급 확률 (%) — 롤토체스처럼 플레이어 레벨이 정한다. (일반, 희귀, 영웅, 전설). 문서 v0.4 14절.</summary>
         public static (int common, int rare, int hero, int legend) DrawOdds(int level) => level switch
@@ -97,7 +105,7 @@ namespace LaneBattle.Core.Wave
         public static TowerDef FindRecipe(int defA, int defB)
         {
             foreach (var t in Towers)
-                if (t.Tier == 2 && ((t.RecipeA == defA && t.RecipeB == defB) || (t.RecipeA == defB && t.RecipeB == defA))) return t;
+                if (t.Tier >= 2 && ((t.RecipeA == defA && t.RecipeB == defB) || (t.RecipeA == defB && t.RecipeB == defA))) return t;
             return null;
         }
 
