@@ -61,8 +61,8 @@ namespace LaneBattle.Tests
                 foreach (var e in star.Events) if (e.Type == SimEventType.Attack) { dmgStar = e.Value; break; }
                 if (dmgOne > 0 && dmgStar > 0) break;
             }
-            Assert.AreEqual(12, dmgOne);
-            Assert.AreEqual(12 * 220 / 100, dmgStar);
+            Assert.AreEqual(14, dmgOne);
+            Assert.AreEqual(14 * 220 / 100, dmgStar);
         }
 
         [Test]

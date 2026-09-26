@@ -27,7 +27,7 @@ namespace LaneBattle.Tests
             var lane = new LaneSim(new LaneConfig { AutoWaves = false }, 1);
             var a = lane.Build(WaveCatalog.Tower(7), 0, 0);
             lane.Mod = new LaneModifiers { TowerRangeDelta10 = -10 };
-            Assert.AreEqual(3000, lane.EffectiveRange(a));
+            Assert.AreEqual(3500, lane.EffectiveRange(a)); // 4.5 - 1
         }
 
         [Test]

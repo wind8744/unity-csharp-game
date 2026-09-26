@@ -333,6 +333,7 @@ namespace LaneBattle.Core.Wave
                 int dmg = EffectiveDamage(t, target);
                 Emit(SimEventType.Attack, t.Id, target.Id, dmg);
                 if (SplashRadius10(t) > 0) Splash(t, target, dmg); else Hit(t, target, dmg);
+                if (t.Def.ChainCount > 0) Chain(t, target, dmg);
             }
 
             FlushFireBursts();
@@ -472,6 +473,28 @@ namespace LaneBattle.Core.Wave
             var hits = new List<Creep>();
             foreach (var c in Creeps) if (CanTarget(t, c) && Dist2(center.X, center.Y, c.X, c.Y) <= r2) hits.Add(c);
             foreach (var c in hits) Hit(t, c, dmg);
+        }
+
+        /// <summary>연쇄: 맞은 유닛에서 가까운 다른 유닛으로 최대 N번 튄다 (기지에 가까운 순, 피해 %).</summary>
+        void Chain(Tower t, Creep first, int dmg)
+        {
+            var hit = new List<Creep> { first };
+            var cur = first;
+            long r2 = Sq(t.Def.ChainRange10 * 100);
+            for (int k = 0; k < t.Def.ChainCount; k++)
+            {
+                Creep next = null;
+                foreach (var c in Creeps)
+                {
+                    if (hit.Contains(c) || !CanTarget(t, c) || Dist2(cur.X, cur.Y, c.X, c.Y) > r2) continue;
+                    if (next == null || c.Dist > next.Dist || (c.Dist == next.Dist && c.Id < next.Id)) next = c;
+                }
+                if (next == null) break;
+                hit.Add(next);
+                Emit(SimEventType.Attack, t.Id, next.Id, dmg * t.Def.ChainPercent / 100);
+                Hit(t, next, Math.Max(1, dmg * t.Def.ChainPercent / 100));
+                cur = next;
+            }
         }
 
         void ApplyDamage(Creep c, int dmg, int sourceId)
