@@ -1293,10 +1293,359 @@ def creep_15(c, f):
     c.oy = 0
 
 
+# ---- hidden fusions (64x64) ------------------------------------------------
+def glow_eye(c, x, y, col, halo, r=1, hl_up=False):
+    """Glowing square eye with a soft halo (used by the hidden units)."""
+    blob(c, x, y, r + 2, r + 2, halo, False)
+    c.rect(x - r, y - r, x + r, y + r, col, False)
+    c.px(x, y - 1 if hl_up else y, P.white)
+
+
+def creep_16(c, f):
+    """거대 늑대 (늑대x3) - huge silver dire wolf, shaggy mane, three scars, amber eyes, running."""
+    c.oy = -1 if f else 0
+    fur, fur_l, fur_d = (198, 202, 214), (232, 234, 242), (124, 130, 150)
+    mane, mane_d = (108, 114, 136), (64, 68, 90)
+    amber = (255, 190, 60)
+    scar = (236, 150, 170)
+    # bushy tail (behind)
+    c.oline([(14, 40), (6, 33), (4, 22)], fur, 4, fur_d)
+    blob(c, 4, 20, 4, 4, fur_l, fur_d)
+    # legs: running - stretched on frame 0, gathered on frame 1
+    if f == 0:
+        legs = (((20, 48), (7, 58)), ((25, 48), (15, 60)), ((40, 48), (53, 58)), ((45, 48), (59, 54)))
+        paws = ((6, 59), (14, 61), (54, 59), (60, 55))
+    else:
+        legs = (((20, 48), (18, 60)), ((26, 48), (30, 60)), ((40, 48), (36, 60)), ((45, 48), (48, 60)))
+        paws = ((18, 61), (30, 61), (36, 61), (48, 61))
+    for (a, b), (px_, py_) in zip(legs, paws):
+        c.oline([a, b], fur, 4, fur_d)
+        blob(c, px_, py_, 3, 2, fur_d, dark(fur_d))
+    # body + pale belly
+    blob(c, 31, 42, 18, 10, fur)
+    blob(c, 35, 46, 11, 5, fur_l, False)
+    # shaggy mane: spiky half-ring on the neck/shoulders (behind the head)
+    for ang in range(100, 300, 25):
+        a = math.radians(ang)
+        tx = round(38 + 16 * math.cos(a)); ty = round(28 + 15 * math.sin(a))
+        bx = round(38 + 9 * math.cos(a)); by = round(28 + 8 * math.sin(a))
+        nx_ = -math.sin(a); ny_ = math.cos(a)
+        c.poly([(round(bx - 4 * nx_), round(by - 4 * ny_)), (tx, ty), (round(bx + 4 * nx_), round(by + 4 * ny_))],
+               mane, mane_d)
+    blob(c, 37, 29, 12, 11, mane, mane_d)
+    # ears
+    ear_tri(c, (40, 18), (46, 17), (42, 7), fur, P.pink)
+    ear_tri(c, (48, 17), (54, 19), (53, 8), fur, P.pink)
+    # head + muzzle
+    blob(c, 45, 26, 11, 10, fur)
+    blob(c, 54, 31, 7, 4, fur_l)
+    c.rect(59, 30, 61, 31, P.ink, False)                     # nose
+    c.line([(51, 34), (58, 34)], P.eye)                       # mouth
+    c.rect(52, 35, 52, 36, P.white, False); c.rect(56, 35, 56, 36, P.white, False)   # fangs
+    # amber glowing eyes (angry brows)
+    for x in (42, 48):
+        glow_eye(c, x, 24, amber, (255, 200, 80, 100), hl_up=True)
+    c.line([(39, 20), (43, 21)], fur_d); c.line([(51, 20), (47, 21)], fur_d)
+    blush(c, 45, 27, 6)
+    # three small scars: over the left eye, on the muzzle, on the flank
+    c.line([(40, 20), (43, 26)], scar); c.px(41, 22, fur_d); c.px(42, 24, fur_d)
+    c.line([(52, 28), (56, 29)], scar)
+    c.line([(24, 38), (28, 43)], scar); c.px(25, 40, fur_d); c.px(27, 41, fur_d)
+    c.oy = 0
+
+
+def creep_17(c, f):
+    """하피 여왕 (박쥐+그리핀) - winged harpy queen: tan feathered wings, purple bat ears, tiara, tucked talons."""
+    c.oy = -2 if f else 0
+    wing, wing_d = P.tan, P.tan_d
+    dress, dress_d = (150, 112, 196), (96, 66, 140)
+    hair, hair_d = (86, 56, 124), (56, 34, 84)
+    # faint hover mist
+    blob(c, 31, 60 - c.oy, 10, 2, (204, 172, 240, 70), False)
+    # feathered wings (behind body), up on frame 0 / down on frame 1
+    if f == 0:
+        L = [(26, 30), (14, 6), (2, 12), (2, 26), (12, 36)]
+        R = [(36, 30), (48, 6), (60, 12), (60, 26), (50, 36)]
+        Lf = [(2, 26), (6, 30), (12, 36)]; Rf = [(60, 26), (56, 30), (50, 36)]
+    else:
+        L = [(26, 34), (8, 36), (1, 48), (12, 52), (24, 46)]
+        R = [(36, 34), (54, 36), (61, 48), (50, 52), (38, 46)]
+        Lf = [(1, 48), (6, 52), (12, 52)]; Rf = [(61, 48), (56, 52), (50, 52)]
+    for pts, ftip in ((L, Lf), (R, Rf)):
+        c.poly(pts, wing, wing_d)
+        # feather scallops along the outer edge
+        for (x, y) in ftip:
+            blob(c, x, y, 3, 2, wing, wing_d)
+        c.line([(pts[0][0], pts[0][1] + 1), (pts[1][0] + (2 if pts is L else -2), pts[1][1] + 2)], wing_d)
+        c.line([(pts[0][0], pts[0][1] + 2), (pts[2][0] + (3 if pts is L else -3), pts[2][1])], wing_d)
+        c.line([(pts[0][0], pts[0][1] + 3), (pts[3][0] + (3 if pts is L else -3), pts[3][1] - 1)], wing_d)
+    # talon feet tucked up under the skirt
+    for (x, s) in ((26, -1), (36, 1)):
+        c.oline([(x, 50), (x + 2 * s, 54), (x + 5 * s, 53)], P.brass, 2, P.brass_d)
+        c.px(x + 5 * s, 55, P.brass_d)
+    # dress + feather skirt hem
+    robe(c, 31, 26, 52, 12, dress, None)
+    for x in (22, 27, 32, 37, 41):
+        c.poly([(x - 3, 49), (x, 55), (x + 3, 49)], wing, wing_d)
+    c.rect(24, 36, 38, 37, P.brass, False)                     # gold belt
+    c.px(31, 36, P.cyan)
+    c.oline([(30, 30), (38, 28)], dress_d, 2)                  # collar feathers
+    # arms folded (small)
+    c.oline([(23, 36), (28, 40)], P.skin, 2, P.skin_d)
+    c.oline([(39, 36), (34, 40)], P.skin, 2, P.skin_d)
+    # hair + head
+    blob(c, 31, 20, 11, 10, hair, hair_d)
+    blob(c, 32, 23, 8, 7, P.skin)
+    c.poly([(21, 22), (25, 14), (28, 18)], hair, False)          # side locks
+    c.poly([(41, 22), (37, 14), (34, 18)], hair, False)
+    c.rect(24, 14, 40, 17, hair, False)                          # fringe
+    c.px(28, 18, hair); c.px(34, 18, hair); c.px(31, 18, hair)
+    # purple bat ears on both sides
+    ear_tri(c, (21, 16), (22, 24), (13, 12), P.purple, P.pink)
+    ear_tri(c, (41, 16), (40, 24), (49, 12), P.purple, P.pink)
+    # small tiara
+    c.rect(26, 10, 36, 12, P.brass, P.brass_d)
+    c.poly([(26, 10), (28, 6), (30, 10)], P.brass, P.brass_d)
+    c.poly([(32, 10), (34, 6), (36, 10)], P.brass, P.brass_d)
+    c.poly([(29, 10), (31, 4), (33, 10)], P.brass, P.brass_d)
+    c.px(31, 8, P.cyan); c.px(31, 7, P.white)
+    # face
+    eyes(c, 33, 23, 3, size=3)
+    blush(c, 33, 25, 5)
+    mouth(c, 33, 27, "smile")
+    c.oy = 0
+
+
+def creep_18(c, f):
+    """산 거인 (거북+오우거) - brown ogre giant carrying a mossy rock shell with a pine tree; stone club."""
+    c.oy = -1 if f else 0
+    body, belly = P.brown, P.tan
+    rock, rock_d, rock_l = P.stone, P.stone_d, P.stone_l
+    # tiny pine tree growing out of the shell
+    c.rect(13, 10, 15, 18, P.bark, dark(P.bark))
+    for i, (w, y) in enumerate(((7, 12), (6, 8), (4, 4))):
+        c.poly([(14 - w, y + 3), (14, y - 4), (14 + w, y + 3)], P.green_d if i % 2 == 0 else P.green, dark(P.green_d))
+    # mossy rock shell (behind the body)
+    blob(c, 18, 31, 17, 16, rock_d)
+    blob(c, 18, 31, 15, 14, rock, False)
+    c.line([(8, 24), (12, 30), (9, 37)], rock_d)
+    c.line([(20, 20), (24, 26)], rock_d)
+    c.line([(14, 40), (19, 43)], rock_d)
+    c.px(10, 22, rock_l); c.px(11, 22, rock_l); c.px(24, 19, rock_l)
+    for (x, y, rx, ry) in ((9, 30, 4, 2), (16, 22, 4, 3), (22, 38, 4, 2), (12, 42, 5, 2)):
+        blob(c, x, y, rx, ry, P.moss, dark(P.moss, 0.6))
+    c.rect(4, 44, 34, 47, P.moss, dark(P.moss))                # shell rim
+    # slow heavy stomp: two big feet
+    feet(c, 34, 58, 10, body, f, 6, 3)
+    for i, x in enumerate((24, 44)):
+        dx = 1 if (i == 0) == (f == 0) else -1
+        c.px(x + dx - 3, 57, dark(body)); c.px(x + dx, 57, dark(body)); c.px(x + dx + 3, 57, dark(body))
+    # stone club in the right hand
+    c.oline([(50, 44), (55, 26)], P.wood, 3, P.bark)
+    c.poly([(51, 26), (58, 26), (61, 12), (55, 8), (49, 13)], rock, rock_d)
+    c.line([(53, 20), (56, 16)], rock_d); c.px(52, 14, rock_l)
+    # body (head and body are one chunky blob, like the ogre)
+    blob(c, 36, 38, 19, 18, body)
+    blob(c, 36, 46, 12, 8, belly, False)
+    c.rect(24, 51, 48, 57, P.bark, dark(P.bark))               # loincloth
+    c.px(30, 54, dark(P.bark)); c.px(40, 53, dark(P.bark))
+    # left arm hugging the shell strap
+    c.oline([(22, 34), (16, 44)], body, 4, dark(body))
+    blob(c, 15, 45, 3, 3, body)
+    c.line([(20, 24), (30, 22)], dark(P.bark), 2)              # strap over the shoulder
+    # ears + hair tufts
+    ear_tri(c, (54, 30), (53, 36), (59, 32), body)
+    c.px(34, 21, P.bark); c.px(36, 20, P.bark); c.px(38, 21, P.bark)
+    blob(c, 30, 26, 3, 2, P.moss, dark(P.moss, 0.6))          # moss on his shoulder
+    # face
+    eyes(c, 40, 32, 6, style="angry")
+    blush(c, 40, 34, 9)
+    c.line([(33, 40), (46, 40)], P.eye)
+    c.rect(43, 37, 45, 40, P.white, dark(P.cream))             # tusk
+    c.rect(35, 40, 36, 42, P.white, dark(P.cream))             # second tusk
+    c.oy = 0
+
+
+def creep_19(c, f):
+    """그림자 군주 (암살자+어둠 사제) - tall shadow lord, black/purple cloak, two red eyes, skull dagger-staff."""
+    c.oy = -2 if f else 0
+    cloak, cloak_d = (38, 32, 52), (22, 18, 32)
+    vio, vio_l = P.purple_d, P.purple
+    face_sh = (54, 48, 70)
+    # shadow wisps around the hem (alternate up/down between frames)
+    for i, (x, y) in enumerate(((9, 52), (15, 58), (24, 61), (34, 61), (43, 58), (50, 52))):
+        dy = 1 if (i % 2 == 0) == (f == 0) else -1
+        blob(c, x, y + dy - c.oy, 5, 3, (120, 80, 170, 110), False)
+        blob(c, x + 2, y + dy - c.oy - 2, 2, 2, (150, 112, 196, 150), False)
+    # skull-topped dagger-staff (behind the cloak)
+    c.line([(48, 60), (48, 16)], P.bark, 2)
+    c.rect(45, 17, 51, 18, P.brass, P.brass_d)                 # cross-guard
+    c.poly([(46, 19), (50, 19), (48, 30)], P.steel_l, P.steel_d)   # dagger blade hanging under the skull
+    skull(c, 48, 11, 5, P.cream_l, P.red)
+    c.px(46, 8, P.white)
+    # tall tattered cloak
+    hem = [(29, 10), (13, 40), (11, 58), (16, 53), (21, 59), (26, 54), (31, 60), (36, 54), (41, 59), (46, 53),
+           (47, 58), (45, 40)]
+    if f:
+        hem = [(x, y - (1 if i % 2 else 0)) for i, (x, y) in enumerate(hem)]
+    c.poly(hem, cloak, cloak_d)
+    c.poly([(29, 22), (21, 56), (37, 56)], vio, False)          # purple inner lining
+    c.line([(16, 40), (42, 40)], vio_l)                         # trim
+    c.rect(24, 32, 34, 33, P.red_d, False)                      # dark red sash
+    c.px(29, 32, P.brass)
+    # gloved arm holding the staff
+    c.oline([(36, 30), (46, 26)], cloak, 3, cloak_d)
+    blob(c, 47, 26, 2, 2, vio, vio_l)
+    # high collar
+    c.poly([(17, 24), (41, 24), (37, 14), (21, 14)], cloak_d, False)
+    # hood with a half-hidden face
+    blob(c, 29, 16, 11, 10, cloak)
+    blob(c, 31, 19, 7, 5, face_sh)
+    c.rect(18, 8, 40, 16, cloak, False)
+    c.poly([(18, 16), (40, 16), (36, 20), (22, 20)], cloak_d, False)
+    c.line([(21, 22), (37, 22)], cloak)
+    # two red glowing eyes
+    for x in (27, 34):
+        blob(c, x, 19, 2, 2, (255, 80, 80, 90), False)
+        c.rect(x - 1, 19, x + 1, 19, P.red, False)
+        c.px(x, 19, (255, 150, 140))
+    # small dark crown spikes on the hood
+    for x in (24, 29, 34):
+        c.poly([(x - 2, 8), (x, 3), (x + 2, 8)], vio, cloak_d)
+    c.px(29, 5, vio_l)
+    c.oy = 0
+
+
+def creep_20(c, f):
+    """재앙의 용 (드래곤+흑마법사) - black/violet dragon with a warlock-hat crest, violet flames, chest rune."""
+    c.oy = -2 if f else 0
+    body, body_d, belly = (48, 38, 66), (26, 20, 40), (150, 112, 196)
+    wing, wing_d = (96, 66, 140), (60, 40, 92)
+    vio, vio_l, hat = (170, 110, 240), (214, 180, 255), (34, 28, 48)
+    # wide wings (behind body), up on frame 0 / down on frame 1
+    if f == 0:
+        c.poly([(28, 30), (14, 0), (1, 6), (0, 22), (8, 32), (22, 36)], wing, wing_d)
+        c.line([(24, 32), (13, 2)], wing_d); c.line([(24, 33), (2, 9)], wing_d); c.line([(22, 34), (1, 21)], wing_d)
+        c.poly([(30, 28), (24, 4), (36, 10), (38, 22)], wing, wing_d)
+        c.line([(32, 26), (25, 6)], wing_d)
+    else:
+        c.poly([(28, 34), (2, 30), (0, 42), (8, 50), (20, 48)], wing, wing_d)
+        c.line([(24, 36), (3, 31)], wing_d); c.line([(24, 38), (1, 41)], wing_d); c.line([(22, 40), (8, 49)], wing_d)
+        c.poly([(30, 30), (34, 42), (24, 46)], wing, wing_d)
+    # tail with a violet spade
+    c.oline([(16, 50), (7, 55), (2, 62)], body, 4, body_d)
+    c.poly([(0, 58), (7, 60), (2, 63)], vio, wing_d)
+    # tucked legs (flying)
+    for i, x in enumerate((22, 36)):
+        dx = 1 if (i == 0) == (f == 0) else -1
+        blob(c, x + dx, 56, 5, 4, body)
+        for k in (-3, 0, 3):
+            c.px(x + dx + k, 59, P.cream_l)
+    # body + violet belly plates
+    blob(c, 29, 44, 17, 12, body)
+    blob(c, 30, 48, 11, 7, belly, False)
+    for y in (46, 50, 54):
+        c.line([(21, y), (39, y)], P.purple_d)
+    # glowing violet rune on the chest
+    blob(c, 30, 45, 6, 6, (170, 110, 240, 110), False)
+    star(c, 30, 45, 5, 2, vio_l, vio)
+    c.px(30, 44, P.white)
+    # back spikes
+    for i in range(3):
+        x = 18 + i * 6
+        c.poly([(x, 34 - i), (x + 2, 28 - i), (x + 4, 34 - i)], vio, wing_d)
+    # neck + head + muzzle
+    blob(c, 40, 30, 8, 8, body)
+    blob(c, 42, 24, 12, 10, body)
+    blob(c, 51, 28, 7, 4, body)
+    c.px(55, 27, body_d); c.px(57, 28, body_d)
+    # warlock-hat-shaped crest on the head
+    c.poly([(30, 16), (54, 16), (44, -2)], hat, dark(hat, 0.6))
+    c.ell(28, 14, 56, 19, hat, dark(hat, 0.6))
+    c.rect(35, 15, 51, 16, vio, False)
+    c.px(46, 12, vio_l); c.px(44, 6, vio_l)
+    c.poly([(26, 18), (24, 12), (30, 16)], P.cream, P.tan_d)     # small horns peeking under the brim
+    c.poly([(56, 18), (60, 12), (55, 16)], P.cream, P.tan_d)
+    # violet glowing eyes
+    for x in (40, 46):
+        glow_eye(c, x, 23, vio, (170, 110, 240, 100), hl_up=True)
+    c.line([(37, 20), (41, 21)], body_d); c.line([(49, 20), (45, 21)], body_d)
+    c.line([(46, 31), (52, 31)], P.eye)
+    c.px(47, 32, P.white); c.px(51, 32, P.white)
+    # violet flames from the mouth on frame 1
+    if f:
+        flame_h(c, 52, 30, 12, 8, 1, vio, vio_l, wing_d)
+        flame_h(c, 54, 26, 7, 4, 0, vio, vio_l, wing_d)
+        c.px(63, 25, vio_l); c.px(62, 36, vio_l)
+    else:
+        c.px(56, 24, vio_l); c.px(58, 22, vio_l)
+    c.oy = 0
+
+
+def creep_21(c, f):
+    """고블린 공성차 (고블린x2+거북) - two goblins riding a turtle-shell cart: wooden wheels, battering ram."""
+    c.oy = -1 if f else 0
+
+    def wheel_r(cx, cy, r, phase):
+        c.ell(cx - r, cy - r, cx + r, cy + r, P.wood, P.bark)
+        c.ell(cx - r + 1, cy - r + 1, cx + r - 1, cy + r - 1, P.wood, P.bark)
+        k = r - 2
+        if phase % 2 == 0:
+            c.line([(cx - k, cy), (cx + k, cy)], P.bark); c.line([(cx, cy - k), (cx, cy + k)], P.bark)
+        else:
+            d = round(k * 0.7)
+            c.line([(cx - d, cy - d), (cx + d, cy + d)], P.bark); c.line([(cx - d, cy + d), (cx + d, cy - d)], P.bark)
+        c.rect(cx - 1, cy - 1, cx + 1, cy + 1, P.brass, False)
+
+    # rear goblin (behind the shell), club raised, arm bounces
+    ga = 1 if f else 0
+    c.oline([(14, 24 - ga), (10, 10 - ga)], P.green_d, 2, dark(P.green_d))
+    c.oline([(9, 12 - ga), (14, 4 - ga)], P.wood, 3, P.bark)
+    blob(c, 15, 3 - ga, 3, 3, P.bark)
+    blob(c, 17, 24, 6, 5, P.green_d)
+    ear_tri(c, (10, 12), (10, 18), (2, 10), P.green, P.pink)
+    ear_tri(c, (24, 12), (24, 18), (32, 10), P.green, P.pink)
+    blob(c, 17, 15, 8, 7, P.green)
+    eyes(c, 19, 15, 3)
+    blush(c, 19, 17, 4)
+    mouth(c, 20, 19, "grin")
+    # wooden platform + wheels + ram
+    c.rect(4, 42, 56, 47, P.wood, P.bark)
+    c.line([(8, 44), (52, 44)], P.wood_l)
+    c.rect(6, 47, 54, 49, P.bark, False)
+    wheel_r(16, 54, 8, f)
+    wheel_r(44, 54, 8, f)
+    c.oline([(46, 40), (62, 40)], P.wood, 5, P.bark)             # battering ram log
+    c.rect(58, 36, 63, 44, P.steel, P.steel_d)                   # steel cap
+    c.px(59, 37, P.steel_l); c.px(60, 37, P.steel_l)
+    c.line([(46, 38), (46, 42)], P.bark); c.line([(50, 38), (50, 42)], P.bark)
+    # turtle shell cart body
+    blob(c, 30, 32, 22, 12, P.green_d)
+    c.rect(8, 38, 52, 42, P.moss, dark(P.moss))
+    for (x, y) in ((30, 22), (19, 30), (41, 30), (30, 35)):
+        c.poly([(x - 4, y), (x, y - 4), (x + 4, y), (x, y + 4)], P.green_d, dark(P.green_d, 0.6))
+    c.line([(12, 34), (48, 34)], dark(P.green_d, 0.6))
+    # small banner pole on the shell
+    c.line([(36, 20), (36, 6)], P.bark)
+    c.poly([(37, 6), (47, 9), (37, 12)], P.red, P.red_d)
+    # front goblin (driver) peeking over the shell edge, holding the reins
+    blob(c, 47, 30, 5, 4, P.green_d)
+    ear_tri(c, (41, 20), (41, 26), (34, 18), P.green, P.pink)
+    ear_tri(c, (53, 20), (53, 26), (61, 18), P.green, P.pink)
+    blob(c, 47, 22, 7, 6, P.green)
+    c.rect(41, 16, 53, 19, P.bark, dark(P.bark))                 # leather cap
+    eyes(c, 49, 22, 3)
+    blush(c, 49, 24, 4)
+    mouth(c, 50, 26, "grin")
+    c.line([(52, 30), (58, 36)], P.bark)                         # rein / rope to the ram
+    c.oy = 0
+
+
 CREEPS = {1: creep_1, 2: creep_2, 3: creep_3, 4: creep_4, 5: creep_5, 6: creep_6, 7: creep_7, 8: creep_8,
           9: creep_9, 10: creep_10, 11: creep_11,
-          12: creep_12, 13: creep_13, 14: creep_14, 15: creep_15}
-CREEP_SIZE = {9: 64, 10: 64, 12: 64, 13: 64, 14: 64, 15: 64}
+          12: creep_12, 13: creep_13, 14: creep_14, 15: creep_15,
+          16: creep_16, 17: creep_17, 18: creep_18, 19: creep_19, 20: creep_20, 21: creep_21}
+CREEP_SIZE = {9: 64, 10: 64, 12: 64, 13: 64, 14: 64, 15: 64, 16: 64, 17: 64, 18: 64, 19: 64, 20: 64, 21: 64}
 
 # --------------------------------------------------------------------------
 # world tiles
@@ -1625,6 +1974,15 @@ def ui_card_legend(c):
         c.px(x, y - 1, P.white)
 
 
+def ui_card_hidden(c):
+    """Same layout as ui_card_legend: near-black border, thin violet inner line, tiny violet corner gems."""
+    ui_card(c, (38, 32, 50), False)
+    c.rrect(3, 3, 92, 124, 6, None, P.purple)
+    for (x, y) in ((5, 5), (90, 5), (5, 122), (90, 122)):
+        c.poly([(x, y - 2), (x + 2, y), (x, y + 2), (x - 2, y)], P.purple_l, P.purple_d)
+        c.px(x, y - 1, P.white)
+
+
 def ui_slot(c):
     c.rrect(0, 0, 39, 39, 6, (120, 90, 60))
     c.rrect(1, 1, 38, 38, 5, (214, 196, 160), False)
@@ -1924,6 +2282,7 @@ def build():
     make("ui_card_rare", 96, 128, lambda c: ui_card(c, (90, 140, 220)))
     make("ui_card_hero", 96, 128, lambda c: ui_card(c, P.brass, True))
     make("ui_card_legend", 96, 128, ui_card_legend)
+    make("ui_card_hidden", 96, 128, ui_card_hidden)
     make("ui_slot", 40, 40, ui_slot)
     for name in ("icon_coin", "icon_heart", "icon_income", "icon_star", "icon_clock", "icon_skull", "icon_wing",
                  "icon_shield", "icon_sword", "icon_range", "icon_speed", "icon_leaf", "icon_fire", "icon_gear",
@@ -1941,7 +2300,7 @@ def expected_names():
     names = []
     for t in range(1, 22):
         names += [f"tower_{t}_0", f"tower_{t}_1", f"tower_{t}_atk"]
-    for k in range(1, 16):
+    for k in range(1, 22):
         names += [f"creep_{k}_0", f"creep_{k}_1"]
     names += ["tile_grass_0", "tile_grass_1", "tile_path", "tile_slot", "tile_slot_hover", "base", "gate",
               "flag_blue", "flag_red"]
@@ -1951,7 +2310,7 @@ def expected_names():
     names += [f"fx_star_{i}" for i in range(4)] + [f"fx_heal_{i}" for i in range(3)]
     names += ["fx_slow", "fx_burn", "fx_silence", "fx_stealth", "fx_shadow"]
     names += ["ui_panel", "ui_panel_dark", "ui_button", "ui_button_green", "ui_button_blue", "ui_button_grey",
-              "ui_card", "ui_card_rare", "ui_card_hero", "ui_card_legend", "ui_slot"]
+              "ui_card", "ui_card_rare", "ui_card_hero", "ui_card_legend", "ui_card_hidden", "ui_slot"]
     names += ["icon_coin", "icon_heart", "icon_income", "icon_star", "icon_clock", "icon_skull", "icon_wing",
               "icon_shield", "icon_sword", "icon_range", "icon_speed", "icon_leaf", "icon_fire", "icon_gear",
               "icon_lock", "icon_check", "icon_eye", "icon_merge"]
@@ -2020,6 +2379,9 @@ def main():
     tier3 = tuple(f"tower_{t}_" for t in (18, 19, 20, 21))
     sel = [(n, im) for n, im in SPRITES if n.startswith(tier3)]
     contact_sheet(sel, os.path.join(SCRATCH, "contact_tier3.png"), scale=4, max_w=1400)
+    hidden = tuple(f"creep_{k}_" for k in (16, 17, 18, 19, 20, 21))
+    sel = [(n, im) for n, im in SPRITES if n.startswith(hidden)]
+    contact_sheet(sel, os.path.join(SCRATCH, "contact_hidden.png"), scale=4, max_w=1400)
     print("contact sheet:", CONTACT)
 
 

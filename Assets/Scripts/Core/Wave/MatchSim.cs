@@ -34,6 +34,7 @@ namespace LaneBattle.Core.Wave
         public int EventWarnSeconds = 30;
         public bool FunLayer = true;                  // 증강·이벤트·미션·시너지 켜기
         public bool SendUpgradesEnabled = true;       // 돌격 강화 허용
+        public bool HandFusion = true;                // 손패 조합 → 히든 유닛
         public HashSet<AugmentId> AllowedSecretAugments; // 해금한 비밀 증강 (null 이면 없음), 모든 자리에 적용
         public HashSet<AugmentId>[] SecretAugmentsPerSlot; // 온라인: 슬롯(팀×인원+자리)별 각자 해금한 것. 있으면 위 값보다 우선
 
@@ -70,6 +71,7 @@ namespace LaneBattle.Core.Wave
         public int Level = 1, Xp;                    // 뽑기 등급 확률을 정하는 개인 레벨 (경험치: 수입 때 자동 + 골드로 구매)
         public int MaxStar = 1;                      // 해금 조건용
         public HashSet<int> FusedKinds = new HashSet<int>();
+        public HashSet<int> HiddenMade = new HashSet<int>();  // 손패 조합으로 만든 히든 유닛 종류
         public List<int> RecentSendTicks = new List<int>();
         public List<int> RecentHeroSendTicks = new List<int>();
         public bool Has(AugmentId a) => Augments.Contains(a);
@@ -117,7 +119,7 @@ namespace LaneBattle.Core.Wave
         public static MatchCommand Fuse(int team, int player, int towerA, int towerB) => new MatchCommand { Team = team, Player = player, Type = CommandType.Fuse, A = towerA, B = towerB };
     }
 
-    public enum MatchEventType { Income, Drew, Sent, Built, Upgraded, Sold, KillGold, Rejected, MatchEnd, AugmentOffer, AugmentPicked, PauseEnd, EventWarn, EventStart, EventEnd, MissionDone, GroupSynergy, Merged, Fused, SendsUpgraded, LevelUp }
+    public enum MatchEventType { Income, Drew, Sent, Built, Upgraded, Sold, KillGold, Rejected, MatchEnd, AugmentOffer, AugmentPicked, PauseEnd, EventWarn, EventStart, EventEnd, MissionDone, GroupSynergy, Merged, Fused, SendsUpgraded, LevelUp, HandFused }
 
     public struct MatchEvent
     {
@@ -375,6 +377,23 @@ namespace LaneBattle.Core.Wave
 
         static int AliveTowers(LaneSim lane) { int n = 0; foreach (var t in lane.Towers) if (t.Alive) n++; return n; }
 
+        /// <summary>손패에 조합이 완성됐으면 재료를 빼고 히든 카드를 넣는다 (연쇄 가능). 문서 v0.4 17절.</summary>
+        void TryHandFusion(PlayerEcon p)
+        {
+            if (!Cfg.HandFusion) return;
+            for (int guard = 0; guard < 4; guard++)
+            {
+                var found = WaveCatalog.FindHandRecipe(p.Hand);
+                if (found == null) return;
+                var (result, indices) = found.Value;
+                indices.Sort();
+                for (int i = indices.Count - 1; i >= 0; i--) p.Hand.RemoveAt(indices[i]);
+                p.Hand.Add(result);
+                p.HiddenMade.Add(result);
+                Emit(MatchEventType.HandFused, p.Team, p.Index, result, p.Hand.Count - 1);
+            }
+        }
+
         /// <summary>경험치를 주고 레벨업 처리 (넘치는 경험치는 이월).</summary>
         public void AddXp(PlayerEcon p, int amount)
         {
@@ -525,6 +544,7 @@ namespace LaneBattle.Core.Wave
                     p.Hand.Add(def.Id);
                     p.Drawn++;
                     Emit(MatchEventType.Drew, c.Team, c.Player, def.Id, p.Hand.Count - 1);
+                    TryHandFusion(p);
                     break;
                 }
                 case CommandType.Send:

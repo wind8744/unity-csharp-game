@@ -277,6 +277,17 @@ namespace LaneBattle.Game
                 case MatchEventType.GroupSynergy:
                     if (ev.Team == MyTeam) ShowMsg(ev.B == 1 ? "무리 시너지: 같은 유닛 3마리 → 체력 +20%" : ev.B == 2 ? "무리 시너지: 야수 3 → 속도 +20%" : ev.B == 3 ? "무리 시너지: 공중 3 → 체력 +15%" : ev.B == 4 ? "무리 시너지: 거인 3 → 누수 +1" : "무리 시너지: 암흑 3 → 은신 +1초");
                     break;
+                case MatchEventType.HandFused:
+                    if (mine)
+                    {
+                        var hd = WaveCatalog.Attacker(ev.A);
+                        bool first = !ProfileStore.Current.HiddenDiscovered.Contains(ev.A);
+                        ShowBanner($"손패 합성! 히든 유닛 [{hd.Name}]" + (first ? " — 새 조합 발견!" : ""), 4f);
+                        Sfx.Play("fuse", 0.9f);
+                        if (first) { ProfileStore.Current.HiddenDiscovered.Add(ev.A); if (!GameSession.NoSave) ProfileStore.Save(); }
+                    }
+                    else if (ev.Team == MyTeam) ShowMsg($"팀원이 손패 합성으로 {WaveCatalog.Attacker(ev.A).Name}를 만들었습니다");
+                    break;
                 case MatchEventType.LevelUp:
                     if (mine) { ShowMsg($"레벨 {ev.A}! 뽑기에 좋은 유닛이 더 잘 나옵니다" + (ev.A == 4 ? " — 이제 전설도 나옵니다" : ""), 3f); Sfx.Play("augment_pick", 0.7f); }
                     break;
@@ -507,7 +518,7 @@ namespace LaneBattle.Game
 
             _augmentPanel = UiKit.SpritePanel(ui, "AugmentPanel", 230, 300, 820, 196, "ui_panel_dark").transform;
             _augmentPanel.gameObject.SetActive(false);
-            _recipePanel = UiKit.SpritePanel(ui, "RecipePanel", 240, 60, 800, 566, "ui_panel").transform;
+            _recipePanel = UiKit.SpritePanel(ui, "RecipePanel", 200, 30, 880, 660, "ui_panel").transform;
             _recipePanel.gameObject.SetActive(false);
             _menuPanel = UiKit.SpritePanel(ui, "MenuPanel", 440, 200, 400, 300, "ui_panel_dark").transform;
             _menuPanel.gameObject.SetActive(false);
@@ -551,7 +562,7 @@ namespace LaneBattle.Game
                 var d = WaveCatalog.Attacker(p.Hand[i]);
                 int idx = i;
                 int cost = p.FreeSends > 0 ? 0 : Sim.SendCostOf(d);
-                string frame = d.Rarity == Rarity.Legend ? "ui_card_legend" : d.Rarity == Rarity.Hero ? "ui_card_hero" : d.Rarity == Rarity.Rare ? "ui_card_rare" : "ui_card";
+                string frame = d.Rarity == Rarity.Hidden ? "ui_card_hidden" : d.Rarity == Rarity.Legend ? "ui_card_legend" : d.Rarity == Rarity.Hero ? "ui_card_hero" : d.Rarity == Rarity.Rare ? "ui_card_rare" : "ui_card";
                 var img = UiKit.SpritePanel(_hand, "C" + i, i * (cw + gap), 0, cw, ch, frame);
                 var b = img.gameObject.AddComponent<Button>(); b.targetGraphic = img;
                 b.onClick.AddListener(() => { Sfx.Play("click", 0.5f); SendCard(idx); });
@@ -665,7 +676,38 @@ namespace LaneBattle.Game
                 UiKit.Label(r, "Rd" + i, x + 194, y + 22, 182, 50, TowerInfo.Describe(f), 8, TextAnchor.UpperLeft, soft);
                 i++;
             }
-            UiKit.SpriteButton(r, "Close", 340, 528, 120, 28, "닫기 (ESC)", ToggleRecipes, "ui_button_grey", 12);
+            HandRecipeRows(r, 56 + 6 * 78 + 6, 880);
+            UiKit.SpriteButton(r, "Close", 380, 624, 120, 28, "닫기 (ESC)", ToggleRecipes, "ui_button_grey", 12);
+        }
+
+        /// <summary>손패 조합 줄: 발견한 것은 재료를, 아니면 ??? 와 힌트만. 경기·타이틀 공용.</summary>
+        public static void HandRecipeRows(Transform r, float y0, float width)
+        {
+            var profile = ProfileStore.Current;
+            UiKit.Label(r, "HandTitle", 0, y0, width, 18, "손패 조합 — 재료 카드가 손패에 모이면 저절로 히든 유닛이 됩니다 (뽑기로는 안 나옴). 발견 전엔 힌트만.", 10, TextAnchor.MiddleCenter, UiKit.InkSoft);
+            int i = 0;
+            foreach (var (result, parts, hint) in WaveCatalog.HandRecipes)
+            {
+                bool known = profile.HiddenDiscovered.Contains(result);
+                float x = 20 + (i % 3) * ((width - 40) / 3f), y = y0 + 22 + (i / 3) * 44;
+                float w = (width - 40) / 3f - 8;
+                UiKit.SpritePanel(r, "H" + i, x, y, w, 40, known ? "ui_panel_dark" : "ui_slot");
+                var d = WaveCatalog.Attacker(result);
+                if (known)
+                {
+                    float px = x + 6;
+                    foreach (var part in parts) { UiKit.IconSprite(r, "Hp" + i + "_" + px, px, y + 4, 30, 30, Art.Creep(part, 0)); px += 30; }
+                    UiKit.Label(r, "Ha" + i, px, y + 6, 20, 28, "→", 14, TextAnchor.MiddleCenter, Color.white);
+                    UiKit.IconSprite(r, "Hr" + i, px + 20, y + 2, 36, 36, Art.Creep(result, 0));
+                    UiKit.Label(r, "Hn" + i, px + 58, y + 4, w - (px - x) - 60, 32, $"{d.Name}\n체력{d.Hp} 누수{d.Leak} 인컴+{d.Income}", 9, TextAnchor.MiddleLeft, UiKit.Gold);
+                }
+                else
+                {
+                    UiKit.Icon(r, "Hl" + i, x + 8, y + 8, 24, "icon_lock");
+                    UiKit.Label(r, "Hn" + i, x + 40, y + 4, w - 46, 32, $"???  힌트: {hint}", 10, TextAnchor.MiddleLeft, UiKit.Ink);
+                }
+                i++;
+            }
         }
 
         void ToggleRecipes()
@@ -726,6 +768,7 @@ namespace LaneBattle.Game
             {
                 Win = win, Online = Net != null, PlayersPerTeam = PlayersPerTeam, MyBaseHp = my.BaseHp, MyBaseMax = my.Cfg.BaseHp, MyLeaked = my.Leaked,
                 MaxStar = p.MaxStar, FusedKinds = p.FusedKinds.Count, Sent = p.Sent, Kills = my.Kills, MissionDone = p.MissionDone ? p.Mission : (MissionId?)null, Seconds = Sim.Seconds,
+                HiddenMade = new HashSet<int>(p.HiddenMade),
             };
             foreach (var t in my.Towers) if (t.Alive && t.Owner == MyPlayer && t.Star > summary.MaxStar) summary.MaxStar = t.Star;
             var profile = ProfileStore.Current;
