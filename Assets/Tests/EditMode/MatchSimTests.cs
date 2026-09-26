@@ -55,7 +55,7 @@ namespace LaneBattle.Tests
         [Test]
         public void IncomeIsPaidEveryInterval()
         {
-            var m = New();
+            var m = new MatchSim(new MatchConfig { FunLayer = false }, 1);   // 증강(이자 등)이 골드에 끼지 않게
             var p = m.Player(0, 0);
             int ticks = m.Cfg.IncomeIntervalSeconds * m.Cfg.TicksPerSecond;
             for (int i = 0; i < ticks; i++) m.Step();

@@ -31,28 +31,38 @@ namespace LaneBattle.Tests
         }
 
         [Test]
-        public void AugmentPauseOffersThreeAndResumes()
+        public void AugmentsAreOfferedAtLevels1369WithoutPausing()
         {
-            var cfg = new MatchConfig { AugmentSeconds = new[] { 2 }, AugmentPauseSeconds = 1 };
-            var m = new MatchSim(cfg, 5);
-            Run(m, 40);
-            Assert.IsTrue(m.IsPaused);
-            Assert.AreEqual(3, m.Player(0, 0).Offers.Count);
-            int gameTickAtPause = m.GameTick;
-            m.Step(L(MatchCommand.Build(0, 0, 1, 0, 0)));
-            Assert.AreEqual(0, m.OwnLane(0).Towers.Count, "정지 중엔 짓기가 거부된다");
-            m.Step(L(MatchCommand.PickAugment(0, 0, 0)));
-            Assert.AreEqual(1, m.Player(0, 0).Augments.Count);
-            Run(m, 20);
+            var m = new MatchSim(new MatchConfig(), 5);
+            m.Step();
+            var p = m.Player(0, 0);
+            Assert.AreEqual(3, p.Offers.Count, "레벨 1: 시작하자마자 3장");
             Assert.IsFalse(m.IsPaused);
-            Assert.AreEqual(1, m.Player(1, 0).Augments.Count, "안 고르면 자동 선택");
-            Assert.Greater(m.GameTick, gameTickAtPause);
+            m.Step(L(MatchCommand.Build(0, 0, 1, 0, 0)));
+            Assert.AreEqual(1, m.OwnLane(0).Towers.Count, "고르는 동안에도 게임은 계속");
+            m.Step(L(MatchCommand.PickAugment(0, 0, 1)));
+            Assert.AreEqual(1, p.Augments.Count); Assert.AreEqual(0, p.Offers.Count);
+            // 상대는 안 고르면 마감에 자동 선택
+            var q = m.Player(1, 0);
+            Assert.AreEqual(3, q.Offers.Count);
+            for (int i = 0; i < m.Cfg.AugmentChoiceSeconds * m.Cfg.TicksPerSecond + 2; i++) m.Step();
+            Assert.AreEqual(1, q.Augments.Count); Assert.AreEqual(0, q.Offers.Count);
+            // 기다리는 동안 수입 경험치로 레벨 2 (증강 없음), 레벨 3 에 두 번째
+            Assert.AreEqual(2, p.Level); Assert.AreEqual(0, p.Offers.Count, "레벨 2 엔 증강이 없다");
+            p.Gold = 500;
+            m.Step(L(MatchCommand.BuyXp(0, 0)));          // 2→3 (4 필요)
+            Assert.AreEqual(3, p.Level); Assert.AreEqual(3, p.Offers.Count, "레벨 3: 두 번째 증강");
+            m.Step(L(MatchCommand.PickAugment(0, 0, 0)));
+            for (int i = 0; i < 60; i++) m.Step(L(MatchCommand.BuyXp(0, 0)));
+            Assert.AreEqual(WaveCatalog.MaxLevel, p.Level);
+            Assert.AreEqual(4, p.OfferedLevels.Count, "1·3·6·9 네 번");
+            Assert.AreEqual(4, p.AugmentPicks + p.Offers.Count / 3);
         }
 
         [Test]
         public void LegacyGivesGoldAndMerchantCheapensDraw()
         {
-            var m = new MatchSim(new MatchConfig { AugmentSeconds = new[] { 1 }, AugmentPauseSeconds = 1 }, 3);
+            var m = new MatchSim(new MatchConfig(), 3);
             Run(m, 20);
             var p = m.Player(0, 0);
             p.Offers.Clear(); p.Offers.Add(AugmentId.Legacy); p.Offers.Add(AugmentId.Merchant); p.Offers.Add(AugmentId.Fortress);
@@ -68,7 +78,7 @@ namespace LaneBattle.Tests
         [Test]
         public void EventWindowStartsAndEnds()
         {
-            var cfg = new MatchConfig { EventSeconds = new[] { 3 }, EventWarnSeconds = 1, EventDurationSeconds = 2, AugmentSeconds = new int[0] };
+            var cfg = new MatchConfig { EventSeconds = new[] { 3 }, EventWarnSeconds = 1, EventDurationSeconds = 2 };
             var m = new MatchSim(cfg, 11);
             Assert.IsTrue(m.NextEvent.HasValue);
             var expected = m.NextEvent.Value;
@@ -115,8 +125,7 @@ namespace LaneBattle.Tests
             var b = MatchRunner.Play(cfg, 21, new IMatchAgent[] { new SimpleBot(), new SimpleBot { Aggression = 80 } });
             Assert.AreEqual(a.Hash(), b.Hash());
             Assert.IsTrue(a.IsOver);
-            Assert.AreEqual(2, a.AugmentRound);
-            Assert.GreaterOrEqual(a.Player(0, 0).Augments.Count, 2);
+            Assert.GreaterOrEqual(a.Player(0, 0).AugmentPicks, 2, "봇도 레벨 1·3 은 넘는다");
             Assert.AreEqual(2, a.EventRound);
         }
     }
