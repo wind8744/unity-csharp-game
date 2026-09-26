@@ -26,6 +26,9 @@ namespace LaneBattle.Core.Net
         public int MySlot => Start != null ? Start.MySlot : Lobby.SlotOf(MyPlayerId);
         public (int team, int player) MyPos => Lobby.SlotPos(MySlot);
         public readonly List<MatchCommand> LocalCommands = new List<MatchCommand>();
+        /// <summary>내가 해금한 비밀 증강 (AugmentId). 클라는 Hello 에 실어 보내고, 호스트는 슬롯별로 모아 Start 에 싣는다.</summary>
+        public List<int> MySecretAugments = new List<int>();
+        readonly Dictionary<int, List<int>> _secretsByPlayer = new Dictionary<int, List<int>>();
         public readonly List<string> Chat = new List<string>();
 
         public event Action LobbyChanged;
@@ -72,7 +75,7 @@ namespace LaneBattle.Core.Net
 
         void OnPeerConnected(int peer)
         {
-            if (!IsHost) Transport.Send(0, MsgType.Hello, Wire.String(MyName));
+            if (!IsHost) Transport.Send(0, MsgType.Hello, Wire.Hello(MyName, MySecretAugments));
         }
 
         void OnPeerDisconnected(int peer)
@@ -100,10 +103,11 @@ namespace LaneBattle.Core.Net
             {
                 case MsgType.Hello when IsHost:
                 {
-                    string name = Wire.ReadString(p);
+                    var (name, secrets) = Wire.ReadHello(p);
                     if (InMatch) { Transport.Send(peer, MsgType.Leave, Wire.String("경기 중")); return; }
                     int pid = peer;
                     _peerPlayer[peer] = pid;
+                    _secretsByPlayer[pid] = secrets;
                     Lobby.Players.Add((pid, name));
                     int slot = FirstEmptySlot();
                     if (slot >= 0) Lobby.SlotPlayer[slot] = pid;
@@ -124,7 +128,7 @@ namespace LaneBattle.Core.Net
                 {
                     var s = Wire.ReadStart(p);
                     s.MySlot = Array.IndexOf(s.SlotPlayer, MyPlayerId);
-                    Lobby.PlayersPerTeam = s.PlayersPerTeam; Lobby.SlotPlayer = s.SlotPlayer;
+                    Lobby.PlayersPerTeam = s.PlayersPerTeam; Lobby.SlotPlayer = s.SlotPlayer; Lobby.MapName = s.MapName;
                     TurnTicks = s.TurnTicks;
                     Start = s;
                     MatchStarted?.Invoke(s);
@@ -201,6 +205,15 @@ namespace LaneBattle.Core.Net
             LobbyChanged?.Invoke();
         }
 
+        /// <summary>호스트가 맵을 고른다 (빈 값 = 인원수 기본 맵). 로비에 방송.</summary>
+        public void SetMap(string mapName)
+        {
+            if (!IsHost || InMatch) return;
+            Lobby.MapName = mapName ?? "";
+            Transport.Broadcast(MsgType.Lobby, Wire.Lobby(Lobby));
+            LobbyChanged?.Invoke();
+        }
+
         public void SendChat(string text)
         {
             string line = $"{MyName}: {text}";
@@ -211,7 +224,13 @@ namespace LaneBattle.Core.Net
         public void StartMatch(ulong seed)
         {
             if (!IsHost || InMatch) return;
-            var s = new StartInfo { Seed = seed, PlayersPerTeam = Lobby.PlayersPerTeam, SlotPlayer = (int[])Lobby.SlotPlayer.Clone(), TurnTicks = TurnTicks, MySlot = Lobby.SlotOf(0) };
+            var s = new StartInfo { Seed = seed, PlayersPerTeam = Lobby.PlayersPerTeam, SlotPlayer = (int[])Lobby.SlotPlayer.Clone(), TurnTicks = TurnTicks, MySlot = Lobby.SlotOf(0), MapName = Lobby.MapName ?? "" };
+            s.SlotSecrets = new List<int>[s.SlotPlayer.Length];
+            for (int i = 0; i < s.SlotPlayer.Length; i++)
+            {
+                int pid = s.SlotPlayer[i];
+                s.SlotSecrets[i] = pid == 0 ? new List<int>(MySecretAugments) : pid > 0 && _secretsByPlayer.TryGetValue(pid, out var list) ? new List<int>(list) : new List<int>();
+            }
             Start = s;
             Transport.Broadcast(MsgType.Start, Wire.Start(s));
             MatchStarted?.Invoke(s);
@@ -223,6 +242,17 @@ namespace LaneBattle.Core.Net
         public MatchSim CreateSim(int botAggression = 65)
         {
             var cfg = new MatchConfig { PlayersPerTeam = Start.PlayersPerTeam };
+            var map = MapCatalog.ByName(Start.MapName ?? "");
+            if (map != null) cfg.MapOverride = map;
+            if (Start.SlotSecrets != null && Start.SlotSecrets.Length == Start.SlotPlayer.Length)
+            {
+                cfg.SecretAugmentsPerSlot = new HashSet<AugmentId>[Start.SlotSecrets.Length];
+                for (int i = 0; i < Start.SlotSecrets.Length; i++)
+                {
+                    cfg.SecretAugmentsPerSlot[i] = new HashSet<AugmentId>();
+                    foreach (var a in Start.SlotSecrets[i]) cfg.SecretAugmentsPerSlot[i].Add((AugmentId)a);
+                }
+            }
             _sim = new MatchSim(cfg, Start.Seed);
             if (IsHost)
             {

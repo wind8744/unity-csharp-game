@@ -24,6 +24,7 @@ namespace LaneBattle.Core.Net
         public List<(int id, string name)> Players = new List<(int, string)>();
         /// <summary>슬롯 = 팀 t 의 p 번 자리 → 인덱스 t * PlayersPerTeam + p. 값은 플레이어 id, 봇이면 -1.</summary>
         public int[] SlotPlayer = { 0, -1 };
+        public string MapName = "";                       // 호스트가 고른 맵 (빈 값 = 인원수 기본 맵)
         public int SlotCount => PlayersPerTeam * 2;
         public int SlotOf(int playerId) { for (int i = 0; i < SlotPlayer.Length; i++) if (SlotPlayer[i] == playerId) return i; return -1; }
         public (int team, int player) SlotPos(int slot) => (slot / PlayersPerTeam, slot % PlayersPerTeam);
@@ -37,6 +38,8 @@ namespace LaneBattle.Core.Net
         public int[] SlotPlayer;
         public int TurnTicks = 4;
         public int MySlot;      // 받는 쪽에서 채운다
+        public string MapName = "";
+        public List<int>[] SlotSecrets;   // 슬롯별 해금한 비밀 증강 (AugmentId 정수). 각자 자기 해금만 받는다
     }
 
     public sealed class TurnData
@@ -68,6 +71,25 @@ namespace LaneBattle.Core.Net
         public static byte[] Long(long v) { using var ms = new MemoryStream(); using var w = new BinaryWriter(ms); w.Write(v); return ms.ToArray(); }
         public static long ReadLong(byte[] p) { using var r = new BinaryReader(new MemoryStream(p)); return r.ReadInt64(); }
 
+        public static byte[] Hello(string name, IEnumerable<int> secrets)
+        {
+            using var ms = new MemoryStream(); using var w = new BinaryWriter(ms);
+            w.Write(name ?? "");
+            var list = new List<int>(secrets ?? new int[0]);
+            w.Write(list.Count);
+            foreach (var a in list) w.Write(a);
+            return ms.ToArray();
+        }
+
+        public static (string name, List<int> secrets) ReadHello(byte[] p)
+        {
+            using var r = new BinaryReader(new MemoryStream(p));
+            string name = r.ReadString();
+            var list = new List<int>();
+            if (r.BaseStream.Position < r.BaseStream.Length) { int n = r.ReadInt32(); for (int i = 0; i < n; i++) list.Add(r.ReadInt32()); }
+            return (name, list);
+        }
+
         public static byte[] Lobby(LobbyInfo l)
         {
             using var ms = new MemoryStream(); using var w = new BinaryWriter(ms);
@@ -76,6 +98,7 @@ namespace LaneBattle.Core.Net
             foreach (var (id, name) in l.Players) { w.Write(id); w.Write(name ?? ""); }
             w.Write(l.SlotPlayer.Length);
             foreach (var s in l.SlotPlayer) w.Write(s);
+            w.Write(l.MapName ?? "");
             return ms.ToArray();
         }
 
@@ -88,6 +111,7 @@ namespace LaneBattle.Core.Net
             int m = r.ReadInt32();
             l.SlotPlayer = new int[m];
             for (int i = 0; i < m; i++) l.SlotPlayer[i] = r.ReadInt32();
+            l.MapName = r.ReadString();
             return l;
         }
 
@@ -97,6 +121,15 @@ namespace LaneBattle.Core.Net
             w.Write(s.Seed); w.Write(s.PlayersPerTeam); w.Write(s.TurnTicks);
             w.Write(s.SlotPlayer.Length);
             foreach (var v in s.SlotPlayer) w.Write(v);
+            w.Write(s.MapName ?? "");
+            int n = s.SlotSecrets?.Length ?? 0;
+            w.Write(n);
+            for (int i = 0; i < n; i++)
+            {
+                var list = s.SlotSecrets[i] ?? new List<int>();
+                w.Write(list.Count);
+                foreach (var a in list) w.Write(a);
+            }
             return ms.ToArray();
         }
 
@@ -107,6 +140,15 @@ namespace LaneBattle.Core.Net
             int n = r.ReadInt32();
             s.SlotPlayer = new int[n];
             for (int i = 0; i < n; i++) s.SlotPlayer[i] = r.ReadInt32();
+            s.MapName = r.ReadString();
+            int m = r.ReadInt32();
+            s.SlotSecrets = new List<int>[m];
+            for (int i = 0; i < m; i++)
+            {
+                int k = r.ReadInt32();
+                s.SlotSecrets[i] = new List<int>(k);
+                for (int j = 0; j < k; j++) s.SlotSecrets[i].Add(r.ReadInt32());
+            }
             return s;
         }
 

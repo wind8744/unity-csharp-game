@@ -28,7 +28,8 @@ namespace LaneBattle.Core.Wave
         public int EventDurationSeconds = 60;
         public int EventWarnSeconds = 30;
         public bool FunLayer = true;                  // 증강·이벤트·미션·시너지 켜기
-        public HashSet<AugmentId> AllowedSecretAugments; // 해금한 비밀 증강 (null 이면 없음)
+        public HashSet<AugmentId> AllowedSecretAugments; // 해금한 비밀 증강 (null 이면 없음), 모든 자리에 적용
+        public HashSet<AugmentId>[] SecretAugmentsPerSlot; // 온라인: 슬롯(팀×인원+자리)별 각자 해금한 것. 있으면 위 값보다 우선
 
         // 인원수별 기본값 (봇 스윕으로 결정, 문서 v0.4 3·8절): 기지 40/120/360, 웨이브 100/130/130%
         public MapDef Map => MapOverride ?? MapCatalog.ForPlayers(PlayersPerTeam);
@@ -241,11 +242,19 @@ namespace LaneBattle.Core.Wave
             foreach (var a in FunCatalog.Augments)
             {
                 if (p.Has(a)) continue;
-                if (FunCatalog.IsSecret(a) && (Cfg.AllowedSecretAugments == null || !Cfg.AllowedSecretAugments.Contains(a))) continue;
+                if (FunCatalog.IsSecret(a) && !SecretAllowed(p, a)) continue;
                 pool.Add(a);
             }
             for (int i = 0; i < 3 && pool.Count > 0; i++) { var a = pool[_rng.Next(pool.Count)]; pool.Remove(a); p.Offers.Add(a); }
             Emit(MatchEventType.AugmentOffer, p.Team, p.Index, p.Offers.Count, 0);
+        }
+
+        bool SecretAllowed(PlayerEcon p, AugmentId a)
+        {
+            int slot = p.Team * Cfg.PlayersPerTeam + p.Index;
+            if (Cfg.SecretAugmentsPerSlot != null && slot < Cfg.SecretAugmentsPerSlot.Length)
+                return Cfg.SecretAugmentsPerSlot[slot] != null && Cfg.SecretAugmentsPerSlot[slot].Contains(a);
+            return Cfg.AllowedSecretAugments != null && Cfg.AllowedSecretAugments.Contains(a);
         }
 
         void EndPause()

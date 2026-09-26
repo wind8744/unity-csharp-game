@@ -129,5 +129,38 @@ namespace LaneBattle.Tests
             Assert.IsTrue(got.Exists(g => g.Item2 == MsgType.Hello && g.Item3 == "안녕" && g.Item1 == 1));
             Assert.IsTrue(got.Exists(g => g.Item2 == MsgType.Chat && g.Item3 == "어서와" && g.Item1 == 0));
         }
+
+        [Test]
+        public void StartCarriesHostMapAndEachPlayersSecretAugments()
+        {
+            var ht = new LoopbackTransport(); var ct = new LoopbackTransport();
+            var host = new NetSession(ht, true, "h", () => 0) { MySecretAugments = { (int)AugmentId.Alchemy } };
+            var client = new NetSession(ct, false, "c", () => 0) { MySecretAugments = { (int)AugmentId.Veteran } };
+            LoopbackTransport.Connect(ht, ct);
+            client.Poll(); host.Poll(); client.Poll();
+            host.SetMap("굽이 둘"); client.Poll();
+            Assert.AreEqual("굽이 둘", client.Lobby.MapName);
+            host.StartMatch(7); client.Poll();
+            Assert.AreEqual("굽이 둘", client.Start.MapName);
+            CollectionAssert.AreEquivalent(new[] { (int)AugmentId.Alchemy }, client.Start.SlotSecrets[0]);
+            CollectionAssert.AreEquivalent(new[] { (int)AugmentId.Veteran }, client.Start.SlotSecrets[1]);
+            var hs = host.CreateSim(); var cs = client.CreateSim();
+            Assert.AreEqual(MapCatalog.TwoBends, hs.Cfg.Map); Assert.AreEqual(MapCatalog.TwoBends, cs.Cfg.Map);
+            // 각자 자기 해금만 증강 풀에: 슬롯 0 은 연금술만, 슬롯 1 은 노련함만
+            Assert.IsTrue(hs.Cfg.SecretAugmentsPerSlot[0].Contains(AugmentId.Alchemy)); Assert.IsFalse(hs.Cfg.SecretAugmentsPerSlot[0].Contains(AugmentId.Veteran));
+            Assert.IsTrue(cs.Cfg.SecretAugmentsPerSlot[1].Contains(AugmentId.Veteran));
+            // 같은 설정이므로 끝까지 같은 해시
+            var bot = new SimpleBot();
+            int guard = 0;
+            while (!hs.IsOver && guard++ < 200000)
+            {
+                if (hs.Tick % 20 == 0) bot.Decide(hs, 0, 0, host.LocalCommands);
+                host.Poll(); host.TryStep();
+                client.Poll(); client.TryStep();
+            }
+            while (!cs.IsOver && guard++ < 200000) { client.Poll(); if (!client.TryStep()) break; }
+            Assert.AreEqual(hs.Hash(), cs.Hash());
+            Assert.IsNull(client.DesyncInfo);
+        }
     }
 }
