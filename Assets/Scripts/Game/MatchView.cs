@@ -242,7 +242,7 @@ namespace LaneBattle.Game
                         {
                             CommandType.Build => "골드가 부족하거나 자리가 찼습니다",
                             CommandType.Upgrade => "강화할 골드가 부족합니다",
-                            CommandType.Draw => "뽑기 골드가 없거나 손패가 가득 찼습니다",
+                            CommandType.Draw => $"뽑기 {Sim.Player(MyTeam, MyPlayer).DrawCost(Sim.Cfg)}골드가 없거나 손패가 가득 찼습니다",
                             CommandType.Send => Sim.ActiveEvent == EventId.Storm ? "폭풍 중에는 공중 유닛을 못 보냅니다" : "보낼 골드가 부족합니다",
                             CommandType.Merge => "같은 타워·같은 별 3개가 필요합니다",
                             CommandType.Fuse => "합성 조합이 맞지 않습니다",
@@ -304,6 +304,7 @@ namespace LaneBattle.Game
                 if (kb.digit2Key.wasPressedThisFrame && Net == null) Speed = 2f;
                 if (kb.digit3Key.wasPressedThisFrame && Net == null) Speed = 4f;
                 if (kb.dKey.wasPressedThisFrame) Draw();
+                if (kb.fKey.wasPressedThisFrame) { Draw(); Draw(); Draw(); }
                 for (int i = 0; i < WaveCatalog.BasicTowers.Length; i++)
                 {
                     var key = i switch { 0 => kb.qKey, 1 => kb.wKey, 2 => kb.eKey, 3 => kb.rKey, 4 => kb.tKey, 5 => kb.yKey, 6 => kb.uKey, 7 => kb.iKey, _ => kb.oKey };
@@ -462,8 +463,9 @@ namespace LaneBattle.Game
             UiKit.SpritePanel(ui, "Bottom", -6, 504, 1292, 222, "ui_panel");
             _handTitle = UiKit.Label(ui, "HandTitle", 16, 510, 540, 18, "", 12, TextAnchor.MiddleLeft, UiKit.Ink);
             _hand = UiKit.Rect(ui, "Hand", 16, 530, 540, 118);
-            UiKit.SpriteButton(ui, "Draw", 16, 654, 150, 34, "뽑기 (D)", Draw, "ui_button", 14);
-            UiKit.Label(ui, "DrawInfo", 176, 654, 380, 34, "일반 60% · 희귀 30% · 영웅 10%\n보낼 때 팀 인컴이 오릅니다 (20초마다 수입)", 11, TextAnchor.MiddleLeft, UiKit.InkSoft);
+            UiKit.SpriteButton(ui, "Draw", 16, 654, 110, 34, "뽑기 (D)", Draw, "ui_button", 14);
+            UiKit.SpriteButton(ui, "Draw3", 132, 654, 90, 34, "×3 (F)", () => { Draw(); Draw(); Draw(); }, "ui_button", 13);
+            UiKit.Label(ui, "DrawInfo", 232, 654, 324, 34, "일반 60% · 희귀 30% · 영웅 10%\n보낼 때 팀 인컴이 오릅니다 (15초마다 수입)", 11, TextAnchor.MiddleLeft, UiKit.InkSoft);
 
             UiKit.Label(ui, "ShopTitle", 574, 510, 450, 18, "타워 (Q~O) — 오른쪽 위 아이콘이 역할: 광역·원거리·감속·화상·대공·지원", 11, TextAnchor.MiddleLeft, UiKit.Ink);
             _shop = UiKit.Rect(ui, "Shop", 574, 530, 450, 66);
@@ -526,8 +528,10 @@ namespace LaneBattle.Game
             UiKit.Clear(_hand);
             var p = Sim.Player(MyTeam, MyPlayer);
             _lastHandVersion = HandVersion();
-            _handTitle.text = $"내 손패 {p.Hand.Count}/{Sim.Cfg.HandMax} — 카드를 누르면 상대 라인으로 보냅니다" + (p.FreeSends > 0 ? $"  (무료 보내기 {p.FreeSends}회)" : "");
-            const float cw = 84, ch = 118, gap = 6;
+            _handTitle.text = $"내 손패 {p.Hand.Count}/{p.HandMax(Sim.Cfg)} — 카드를 누르면 상대 진영으로 보냅니다" + (p.FreeSends > 0 ? $"  (무료 보내기 {p.FreeSends}회)" : "");
+            int slots = p.HandMax(Sim.Cfg);
+            const float ch = 118, gap = 4;
+            float cw = Mathf.Min(84f, (540f - gap * (slots - 1)) / slots);
             for (int i = 0; i < p.Hand.Count; i++)
             {
                 var d = WaveCatalog.Attacker(p.Hand[i]);
@@ -539,12 +543,13 @@ namespace LaneBattle.Game
                 b.onClick.AddListener(() => { Sfx.Play("click", 0.5f); SendCard(idx); });
                 bool can = p.Gold >= cost && !(Sim.ActiveEvent == EventId.Storm && d.Flying);
                 img.color = can ? Color.white : new Color(0.65f, 0.65f, 0.65f, 0.9f);
-                UiKit.IconSprite(img.transform, "Portrait", 14, 8, 56, 52, Art.Creep(d.Id, 0));
-                if (d.Flying) UiKit.Icon(img.transform, "Fly", 62, 6, 16, "icon_wing");
-                UiKit.Label(img.transform, "Name", 0, 62, cw, 16, d.Name, 12, TextAnchor.MiddleCenter, UiKit.Ink);
-                UiKit.IconLabel(img.transform, "Cost", 8, 78, 40, 16, "icon_coin", cost.ToString(), 12, UiKit.Ink);
-                UiKit.IconLabel(img.transform, "Inc", 46, 78, 36, 16, "icon_income", $"+{System.Math.Max(1, d.Income * Sim.Cfg.SendIncomePercent / 100)}", 10, new Color(0.25f, 0.55f, 0.25f));
-                UiKit.Label(img.transform, "Stat", 4, 95, cw - 8, 16, $"체력 {d.Hp} · 누수 {d.Leak}", 9, TextAnchor.MiddleCenter, UiKit.InkSoft);
+                float pw = cw - 28;
+                UiKit.IconSprite(img.transform, "Portrait", (cw - pw) / 2, 8, pw, 52, Art.Creep(d.Id, 0));
+                if (d.Flying) UiKit.Icon(img.transform, "Fly", cw - 22, 6, 16, "icon_wing");
+                UiKit.Label(img.transform, "Name", 0, 62, cw, 16, d.Name, cw < 70 ? 10 : 12, TextAnchor.MiddleCenter, UiKit.Ink);
+                UiKit.IconLabel(img.transform, "Cost", 6, 78, 34, 16, "icon_coin", cost.ToString(), 11, UiKit.Ink);
+                UiKit.IconLabel(img.transform, "Inc", cw - 34, 78, 32, 16, "icon_income", $"+{System.Math.Max(1, d.Income * Sim.Cfg.SendIncomePercent / 100)}", 9, new Color(0.25f, 0.55f, 0.25f));
+                UiKit.Label(img.transform, "Stat", 2, 95, cw - 4, 16, $"체력{d.Hp} 누수{d.Leak}", 8, TextAnchor.MiddleCenter, UiKit.InkSoft);
             }
             if (p.Hand.Count == 0) UiKit.Label(_hand, "Empty", 0, 40, 540, 30, "손패가 비었습니다. [뽑기]로 공격 유닛을 뽑으세요.", 13, TextAnchor.MiddleLeft, UiKit.InkSoft);
         }

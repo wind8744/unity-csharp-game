@@ -57,7 +57,7 @@ namespace LaneBattle.Tests
             var p = m.Player(0, 0);
             p.Offers.Clear(); p.Offers.Add(AugmentId.Legacy); p.Offers.Add(AugmentId.Merchant); p.Offers.Add(AugmentId.Fortress);
             m.Step(L(MatchCommand.PickAugment(0, 0, 0)));
-            Assert.AreEqual(40 + 25, p.Gold);
+            Assert.AreEqual(m.Cfg.StartGold + 25, p.Gold);
             p.Augments.Add(AugmentId.Merchant);
             Run(m, 20);
             int before = p.Gold;

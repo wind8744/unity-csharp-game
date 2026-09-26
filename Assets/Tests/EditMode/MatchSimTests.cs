@@ -15,7 +15,7 @@ namespace LaneBattle.Tests
             var m = New();
             var p = m.Player(0, 0);
             m.Step(L(MatchCommand.Draw(0, 0)));
-            Assert.AreEqual(40 - 5, p.Gold);
+            Assert.AreEqual(m.Cfg.StartGold - m.Cfg.DrawCost, p.Gold);
             Assert.AreEqual(1, p.Hand.Count);
             Assert.IsNotNull(WaveCatalog.Attacker(p.Hand[0]));
         }
@@ -25,11 +25,11 @@ namespace LaneBattle.Tests
         {
             var m = New();
             var p = m.Player(0, 0);
-            for (int i = 0; i < 6; i++) m.Step(L(MatchCommand.Draw(0, 0)));
-            Assert.AreEqual(6, p.Hand.Count);
+            for (int i = 0; i < m.Cfg.HandMax; i++) m.Step(L(MatchCommand.Draw(0, 0)));
+            Assert.AreEqual(m.Cfg.HandMax, p.Hand.Count);
             m.Step(L(MatchCommand.Draw(0, 0)));
-            Assert.AreEqual(6, p.Hand.Count);
-            Assert.AreEqual(10, p.Gold);
+            Assert.AreEqual(m.Cfg.HandMax, p.Hand.Count);
+            Assert.AreEqual(m.Cfg.StartGold - m.Cfg.HandMax * m.Cfg.DrawCost, p.Gold);
             p.Gold = 3;
             m.Step(L(MatchCommand.Build(0, 0, 1, 0, 0)));
             Assert.AreEqual(0, m.OwnLane(0).Towers.Count);
@@ -44,7 +44,7 @@ namespace LaneBattle.Tests
             int incomeBefore = m.Teams[0].Income;
             m.Step(L(MatchCommand.Send(0, 0, 0)));
             Assert.AreEqual(0, p.Hand.Count);
-            Assert.AreEqual(40 - m.SendCostOf(LaneBattle.Core.Wave.WaveCatalog.Attacker(1)), p.Gold);
+            Assert.AreEqual(m.Cfg.StartGold - m.SendCostOf(LaneBattle.Core.Wave.WaveCatalog.Attacker(2)), p.Gold);
             Assert.AreEqual(incomeBefore + 1, m.Teams[0].Income);
             m.Step(); // 출발
             Assert.AreEqual(1, m.EnemyLane(0).CreepsAlive());
@@ -58,20 +58,20 @@ namespace LaneBattle.Tests
             var p = m.Player(0, 0);
             int ticks = m.Cfg.IncomeIntervalSeconds * m.Cfg.TicksPerSecond;
             for (int i = 0; i < ticks; i++) m.Step();
-            Assert.AreEqual(40 + 8, p.Gold);
+            Assert.AreEqual(m.Cfg.StartGold + m.Cfg.BaseIncomePerPlayer, p.Gold);
             for (int i = 0; i < ticks; i++) m.Step();
-            Assert.AreEqual(40 + 16, p.Gold);
+            Assert.AreEqual(m.Cfg.StartGold + 2 * m.Cfg.BaseIncomePerPlayer, p.Gold);
         }
 
         [Test]
         public void TeamIncomeIsSplitBetweenTeammates()
         {
             var m = new MatchSim(new MatchConfig { PlayersPerTeam = 2 }, 3);
-            Assert.AreEqual(16, m.Teams[0].Income);
+            Assert.AreEqual(2 * m.Cfg.BaseIncomePerPlayer, m.Teams[0].Income);
             m.Teams[0].Income = 17;
             for (int i = 0; i < m.Cfg.IncomeIntervalSeconds * m.Cfg.TicksPerSecond; i++) m.Step();
-            Assert.AreEqual(40 + 9, m.Player(0, 0).Gold);
-            Assert.AreEqual(40 + 8, m.Player(0, 1).Gold);
+            Assert.AreEqual(m.Cfg.StartGold + 9, m.Player(0, 0).Gold);
+            Assert.AreEqual(m.Cfg.StartGold + 8, m.Player(0, 1).Gold);
         }
 
         [Test]
