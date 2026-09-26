@@ -5,7 +5,7 @@ namespace LaneBattle.Core.Wave
     public enum DefTribe { Forest, Fire, Machine }
     public enum DefJob { Warrior, Archer, Mage }
     public enum AtkTribe { Beast, Air, Giant, Dark }
-    public enum Rarity { Common, Rare, Hero, Legend }
+    public enum Rarity { Common, Rare, Hero, Legend, Hidden }   // Hidden: 뽑기엔 안 나오고 손패 조합으로만
 
     /// <summary>타워 정의. 숫자는 core-rules-v0.3.md 6절. 타워는 체력이 없다.</summary>
     public sealed class TowerDef
@@ -131,7 +131,45 @@ namespace LaneBattle.Core.Wave
             new AttackerDef { Id = 13, Name = "리치",     Rarity = Rarity.Legend, Tribe = AtkTribe.Dark,  SendCost = 22, Hp = 300, SpeedMilliPerSec = 1000, Leak = 4, Income = 5, HealPerSec = 5, HealRange10 = 25, PeriodicSilenceEverySec = 4, PeriodicSilenceTenths = 20 },
             new AttackerDef { Id = 14, Name = "고대 드래곤", Rarity = Rarity.Legend, Tribe = AtkTribe.Air, SendCost = 26, Hp = 560, SpeedMilliPerSec = 1200, Leak = 5, Income = 6, Flying = true, SpawnSilenceRange10 = 30, SpawnSilenceTenths = 20 },
             new AttackerDef { Id = 15, Name = "타이탄",    Rarity = Rarity.Legend, Tribe = AtkTribe.Giant, SendCost = 24, Hp = 760, SpeedMilliPerSec = 700, Leak = 6, Income = 5, SlowImmune = true },
+            // ── 히든 (손패 조합으로만, 문서 v0.4 17절): 재료 카드가 손패에 모이면 자동으로 합쳐진다.
+            new AttackerDef { Id = 16, Name = "거대 늑대",   Rarity = Rarity.Hidden, Tribe = AtkTribe.Beast, SendCost = 10, Hp = 220, SpeedMilliPerSec = 1900, Leak = 3, Income = 3 },
+            new AttackerDef { Id = 17, Name = "하피 여왕",   Rarity = Rarity.Hidden, Tribe = AtkTribe.Air,   SendCost = 11, Hp = 260, SpeedMilliPerSec = 1700, Leak = 3, Income = 3, Flying = true, StealthSeconds = 2 },
+            new AttackerDef { Id = 18, Name = "산 거인",     Rarity = Rarity.Hidden, Tribe = AtkTribe.Giant, SendCost = 12, Hp = 620, SpeedMilliPerSec = 800,  Leak = 5, Income = 4, SlowImmune = true },
+            new AttackerDef { Id = 19, Name = "그림자 군주", Rarity = Rarity.Hidden, Tribe = AtkTribe.Dark,  SendCost = 15, Hp = 320, SpeedMilliPerSec = 1400, Leak = 4, Income = 4, StealthSeconds = 3, HealPerSec = 4, HealRange10 = 20 },
+            new AttackerDef { Id = 20, Name = "재앙의 용",   Rarity = Rarity.Hidden, Tribe = AtkTribe.Air,   SendCost = 26, Hp = 900, SpeedMilliPerSec = 1100, Leak = 7, Income = 7, Flying = true, SpawnSilenceRange10 = 30, SpawnSilenceTenths = 25, PeriodicSilenceEverySec = 4, PeriodicSilenceTenths = 15 },
+            new AttackerDef { Id = 21, Name = "고블린 공성차", Rarity = Rarity.Hidden, Tribe = AtkTribe.Giant, SendCost = 11, Hp = 360, SpeedMilliPerSec = 900, Leak = 4, Income = 4 },
         };
+
+        /// <summary>손패 조합: 재료 카드(공격 유닛 id, 순서 무관)가 손패에 다 있으면 자동으로 결과 카드 하나가 된다. (결과, 재료들, 힌트)</summary>
+        public static readonly (int result, int[] parts, string hint)[] HandRecipes =
+        {
+            (16, new[] { 1, 1, 1 }, "같은 야수 셋"),
+            (17, new[] { 3, 6 }, "날개 둘, 작은 것과 큰 것"),
+            (18, new[] { 4, 5 }, "느린 것 둘: 등딱지와 몽둥이"),
+            (19, new[] { 7, 8 }, "어둠 둘"),
+            (20, new[] { 9, 11 }, "영웅 둘: 불과 저주"),
+            (21, new[] { 2, 2, 4 }, "초록 둘이 등딱지를 타면"),
+        };
+
+        /// <summary>손패에서 완성된 조합 하나를 찾는다 (재료 카드 인덱스 목록). 없으면 null. 결과 id 순으로 검사 → 결정론.</summary>
+        public static (int result, List<int> indices)? FindHandRecipe(List<int> hand)
+        {
+            foreach (var (result, parts, _) in HandRecipes)
+            {
+                var used = new List<int>();
+                bool ok = true;
+                foreach (var need in parts)
+                {
+                    int found = -1;
+                    for (int i = 0; i < hand.Count; i++) if (hand[i] == need && !used.Contains(i)) { found = i; break; }
+                    if (found < 0) { ok = false; break; }
+                    used.Add(found);
+                }
+                if (ok) return (result, used);
+            }
+            return null;
+        }
+        public static readonly AttackerDef[] HiddenAttackers = System.Array.FindAll(Attackers, a => a.Rarity == Rarity.Hidden);
 
         static readonly Dictionary<int, TowerDef> _t = Index(Towers, x => x.Id);
         static readonly Dictionary<int, AttackerDef> _a = Index(Attackers, x => x.Id);

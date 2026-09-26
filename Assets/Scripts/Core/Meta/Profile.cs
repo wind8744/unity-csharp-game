@@ -16,6 +16,7 @@ namespace LaneBattle.Core.Meta
         public int Sent, Kills;
         public MissionId? MissionDone;  // 이번 판에 달성한 비밀 미션
         public int Seconds;
+        public HashSet<int> HiddenMade = new HashSet<int>();   // 이번 판에 손패 조합으로 만든 히든 유닛
     }
 
     public enum UnlockKind { Title, Map, Augment, Bot }
@@ -34,6 +35,7 @@ namespace LaneBattle.Core.Meta
         public int Matches, Wins, TeamWins, OnlineWins, TotalSent;
         public readonly HashSet<string> Unlocks = new HashSet<string>();
         public readonly HashSet<MissionId> MissionsDone = new HashSet<MissionId>();
+        public readonly HashSet<int> HiddenDiscovered = new HashSet<int>();   // 발견한 손패 조합 (결과 유닛 id)
         public string Title = "";
 
         public bool Has(string id) => Unlocks.Contains(id);
@@ -50,6 +52,7 @@ namespace LaneBattle.Core.Meta
             new UnlockDef { Id = "online_win", Kind = UnlockKind.Title, Name = "온라인 정복자", Reward = "칭호", Hint = "사람을 이기면", Payload = "온라인 정복자", Condition = (p, s) => s.Win && s.Online },
             new UnlockDef { Id = "veteran10", Kind = UnlockKind.Augment, Name = "노련함", Reward = "비밀 증강: 뽑기 -1골드, 손패 +1", Hint = "꾸준히 하면", Payload = "Veteran", Condition = (p, s) => p.Matches >= 10 },
             new UnlockDef { Id = "all_missions", Kind = UnlockKind.Title, Name = "비밀 사냥꾼", Reward = "칭호", Hint = "모든 비밀을 밝히면", Payload = "비밀 사냥꾼", Condition = (p, s) => p.MissionsDone.Count >= FunCatalog.Missions.Length },
+            new UnlockDef { Id = "hidden_all", Kind = UnlockKind.Title, Name = "조합의 달인", Reward = "칭호", Hint = "손패의 모든 비밀 조합을 찾으면", Payload = "조합의 달인", Condition = (p, s) => p.HiddenDiscovered.Count >= WaveCatalog.HandRecipes.Length },
         };
 
         public static UnlockDef Find(string id) { foreach (var u in Catalog) if (u.Id == id) return u; return null; }
@@ -61,6 +64,7 @@ namespace LaneBattle.Core.Meta
             if (s.Win) { Wins++; if (s.PlayersPerTeam >= 2) TeamWins++; if (s.Online) OnlineWins++; }
             TotalSent += s.Sent;
             if (s.MissionDone.HasValue) MissionsDone.Add(s.MissionDone.Value);
+            if (s.HiddenMade != null) foreach (var id in s.HiddenMade) HiddenDiscovered.Add(id);
             var fresh = new List<UnlockDef>();
             foreach (var u in Catalog)
             {
@@ -106,6 +110,8 @@ namespace LaneBattle.Core.Meta
             sb.Append("unlocks=").Append(string.Join(",", Unlocks)).Append('\n');
             var ms = new List<string>(); foreach (var m in MissionsDone) ms.Add(m.ToString());
             sb.Append("missions=").Append(string.Join(",", ms)).Append('\n');
+            var hs = new List<string>(); foreach (var h in HiddenDiscovered) hs.Add(h.ToString());
+            sb.Append("hidden=").Append(string.Join(",", hs)).Append('\n');
             return sb.ToString();
         }
 
@@ -129,6 +135,7 @@ namespace LaneBattle.Core.Meta
                     case "title": p.Title = v; break;
                     case "unlocks": foreach (var u in v.Split(',')) if (u.Length > 0) p.Unlocks.Add(u); break;
                     case "missions": foreach (var m in v.Split(',')) if (Enum.TryParse(m, out MissionId id)) p.MissionsDone.Add(id); break;
+                    case "hidden": foreach (var h in v.Split(',')) if (int.TryParse(h, out int hid)) p.HiddenDiscovered.Add(hid); break;
                 }
             }
             return p;

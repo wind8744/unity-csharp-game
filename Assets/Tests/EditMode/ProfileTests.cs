@@ -38,8 +38,9 @@ namespace LaneBattle.Tests
         public void ProfileRoundTripsThroughText()
         {
             var p = new Profile();
-            p.Apply(new MatchSummary { Win = true, Sent = 70, MissionDone = MissionId.Horde });
+            p.Apply(new MatchSummary { Win = true, Sent = 70, MissionDone = MissionId.Horde, HiddenMade = new HashSet<int> { 16, 20 } });
             var back = Profile.Parse(p.Serialize());
+            CollectionAssert.AreEquivalent(new[] { 16, 20 }, back.HiddenDiscovered);
             Assert.AreEqual(p.Matches, back.Matches); Assert.AreEqual(p.Wins, back.Wins);
             CollectionAssert.AreEquivalent(p.Unlocks, back.Unlocks);
             Assert.IsTrue(back.MissionsDone.Contains(MissionId.Horde));

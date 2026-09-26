@@ -24,7 +24,7 @@ namespace LaneBattle.Tests
         [Test]
         public void HandMaxAndGoldAreEnforced()
         {
-            var m = New();
+            var m = new MatchSim(new MatchConfig { HandFusion = false }, 1);   // 뽑은 카드가 조합으로 합쳐지지 않게
             var p = m.Player(0, 0);
             for (int i = 0; i < m.Cfg.HandMax; i++) m.Step(L(MatchCommand.Draw(0, 0)));
             Assert.AreEqual(m.Cfg.HandMax, p.Hand.Count);
@@ -209,6 +209,44 @@ namespace LaneBattle.Tests
             var wolf = m.EnemyLane(0).Creeps[0];
             Assert.AreEqual(30 * (100 + 2 * MatchSim.SendLevelHpPercent) / 100, wolf.MaxHp, "레벨 2: 체력 +12%");
             Assert.AreEqual(0, m.Teams[1].SendLevel, "상대 팀은 그대로");
+        }
+
+        [Test]
+        public void HandCombosFuseIntoHiddenUnitsThatCannotBeDrawn()
+        {
+            var m = new MatchSim(new MatchConfig { FunLayer = false }, 8);
+            var p = m.Player(0, 0);
+            // 뽑기로는 절대 안 나온다
+            var rng = new Rng(3);
+            for (int i = 0; i < 2000; i++) Assert.AreNotEqual(Rarity.Hidden, MatchSim.RollAttacker(rng, 9).Rarity);
+            // 손패에 늑대 둘 + 다른 것, 그리고 세 번째 늑대가 들어오면 거대 늑대로
+            p.Hand.Clear(); p.Hand.Add(1); p.Hand.Add(3); p.Hand.Add(1);
+            p.DrawRng = new Rng(1);
+            int guard = 0;
+            while (!p.Hand.Contains(16) && guard++ < 200)
+            {
+                p.Gold = 100;
+                m.Step(L(MatchCommand.Draw(0, 0)));
+                if (p.Hand.Count >= p.HandMax(m.Cfg)) { for (int i = p.Hand.Count - 1; i >= 0; i--) if (p.Hand[i] != 1 && p.Hand[i] != 16) { p.Hand.RemoveAt(i); break; } }
+            }
+            Assert.IsTrue(p.Hand.Contains(16), "늑대 셋 → 거대 늑대");
+            Assert.AreEqual(0, p.Hand.FindAll(h => h == 1).Count, "재료 늑대는 사라진다");
+            Assert.IsTrue(p.HiddenMade.Contains(16));
+            // 직접 짜맞춘 손패: 드래곤 + 흑마법사 → 재앙의 용 (뽑기 한 번에 검사)
+            p.Hand.Clear(); p.Hand.Add(9); p.Hand.Add(11);
+            p.Gold = 100; m.Step(L(MatchCommand.Draw(0, 0)));
+            Assert.IsTrue(p.Hand.Contains(20));
+            Assert.IsTrue(m.Events.Exists(e => e.Type == MatchEventType.HandFused && e.A == 20) || p.HiddenMade.Contains(20));
+            // 보낼 수 있다
+            int idx16 = p.Hand.IndexOf(20);
+            m.Step(L(MatchCommand.Send(0, 0, idx16)));
+            m.Step();
+            Assert.IsTrue(m.EnemyLane(0).Creeps.Exists(c => c.Def.Id == 20));
+            foreach (var (result, parts, _) in WaveCatalog.HandRecipes)
+            {
+                Assert.AreEqual(Rarity.Hidden, WaveCatalog.Attacker(result).Rarity);
+                foreach (var part in parts) Assert.AreNotEqual(Rarity.Hidden, WaveCatalog.Attacker(part).Rarity, "재료는 뽑기 유닛");
+            }
         }
     }
 }
