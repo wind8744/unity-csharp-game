@@ -21,6 +21,27 @@ namespace LaneBattle.PlayTests
             view.FastForward(90f);
             yield return null;
             Assert.Greater(view.Sim.Tick, 1700);
+            view.FastForward(300f);
+            yield return null;
+            int alive0 = 0, alive1 = 0;
+            foreach (var t in view.Sim.OwnLane(0).Towers) if (t.Alive) alive0++;
+            foreach (var t in view.Sim.OwnLane(1).Towers) if (t.Alive) alive1++;
+            Assert.AreEqual(alive0, view.MyLaneRenderer.TowerVisualCount, "판매·합성·합치기로 사라진 타워 그림이 남지 않는다");
+            Assert.AreEqual(alive1, view.EnemyLaneRenderer.TowerVisualCount);
+            // 판매를 명령으로 넣어 그림이 지워지는지 직접 확인
+            var mine = view.Sim.OwnLane(0);
+            LaneBattle.Core.Wave.Tower victim = null;
+            foreach (var t in mine.Towers) if (t.Alive && t.Owner == 0) { victim = t; break; }
+            if (victim != null)
+            {
+                view.BotPlaysHuman = false;
+                view.Sell(victim.Id);
+                view.FastForward(0.1f);
+                yield return null;
+                Assert.IsNull(mine.TowerAt(victim.Id));
+                int aliveNow = 0; foreach (var t in mine.Towers) if (t.Alive) aliveNow++;
+                Assert.AreEqual(aliveNow, view.MyLaneRenderer.TowerVisualCount, "판매한 타워 그림이 사라진다");
+            }
             Assert.Greater(view.Sim.OwnLane(0).Towers.Count + view.Sim.OwnLane(1).Towers.Count, 0);
             Assert.Greater(go.GetComponentsInChildren<SpriteRenderer>().Length, 50);
             Object.Destroy(go);

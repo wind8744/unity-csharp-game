@@ -18,6 +18,7 @@ namespace LaneBattle.Game
         public bool PlaySounds = true;
         public int SelectedTowerId = -1;
         public int LocalPlayer = 0;          // 이 사람의 자리 번호 (다른 주인 타워엔 P번호 표시)
+        public int TowerVisualCount => _towers.Count;   // 테스트: 살아 있는 타워 수와 같아야 한다
 
         readonly Transform _root, _fxRoot;
         readonly Dictionary<int, CreepVisual> _creeps = new Dictionary<int, CreepVisual>();

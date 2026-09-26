@@ -27,6 +27,8 @@ namespace LaneBattle.Game
         public NetSession Net;               // 온라인이면 락스텝 세션 (명령은 여기로, 진행은 턴이 와야)
 
         LaneRenderer _myLane, _enemyLane;
+        public LaneRenderer MyLaneRenderer => _myLane;
+        public LaneRenderer EnemyLaneRenderer => _enemyLane;
         readonly List<MatchCommand> _pending = new List<MatchCommand>();
         IMatchAgent[][] _bots;                // [team][player], 사람 자리는 null (BotPlaysHuman 이면 봇)
         float _accumulator, _bannerLeft, _msgLeft, _hintLeft;
@@ -367,7 +369,8 @@ namespace LaneBattle.Game
         public void SendCard(int handIndex) { if (!Sim.IsOver) _pending.Add(MatchCommand.Send(MyTeam, MyPlayer, handIndex)); }
         public void PickAugment(int index) { _pending.Add(MatchCommand.PickAugment(MyTeam, MyPlayer, index)); }
         public void Upgrade() { if (_selectedTower >= 0) _pending.Add(MatchCommand.Upgrade(MyTeam, MyPlayer, _selectedTower)); }
-        public void Sell() { if (_selectedTower >= 0) { _pending.Add(MatchCommand.Sell(MyTeam, MyPlayer, _selectedTower)); SelectTower(-1); } }
+        public void Sell() { if (_selectedTower >= 0) { Sell(_selectedTower); SelectTower(-1); } }
+        public void Sell(int towerId) { _pending.Add(MatchCommand.Sell(MyTeam, MyPlayer, towerId)); }
         public void Merge() { if (_selectedTower >= 0) { _pending.Add(MatchCommand.Merge(MyTeam, MyPlayer, _selectedTower)); SelectTower(-1); } }
         public void Fuse(int partnerId) { if (_selectedTower >= 0) { _pending.Add(MatchCommand.Fuse(MyTeam, MyPlayer, _selectedTower, partnerId)); SelectTower(-1); } }
         public void Transfer(int toPlayer, int amount) { _pending.Add(MatchCommand.Transfer(MyTeam, MyPlayer, toPlayer, amount)); }
