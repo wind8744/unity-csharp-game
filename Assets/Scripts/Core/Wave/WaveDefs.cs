@@ -22,7 +22,10 @@ namespace LaneBattle.Core.Wave
         public int AuraAtkPercent;      // 드루이드: 사거리 안 아군 타워 공격 +%
         public int AuraSpeedPercentMachine; // 드론: 사거리 안 기계 타워 공속 +%
         public int AirMultiplier = 1, GiantMultiplier = 1;
+        public int Tier = 1;            // 2 = 합성 타워
+        public int RecipeA, RecipeB;    // 합성 재료 타워 id (Tier 2 만)
         public bool IsSupport => Atk == 0;
+        public bool IsFused => Tier >= 2;
     }
 
     /// <summary>공격 유닛 정의. 숫자는 core-rules-v0.3.md 7절. 공격력이 없다.</summary>
@@ -54,7 +57,32 @@ namespace LaneBattle.Core.Wave
             new TowerDef { Id = 7, Name = "태엽 포탑",    Cost = 8,  Atk = 12, AttacksPer10s = 4,  Range10 = 40, Tribe = DefTribe.Machine, Job = DefJob.Archer },
             new TowerDef { Id = 8, Name = "강철 대포",    Cost = 15, Atk = 25, AttacksPer10s = 3,  Range10 = 30, Tribe = DefTribe.Machine, Job = DefJob.Warrior, GiantMultiplier = 2 },
             new TowerDef { Id = 9, Name = "수리 드론",    Cost = 8,  Atk = 0,  AttacksPer10s = 0,  Range10 = 20, Tribe = DefTribe.Machine, Job = DefJob.Mage,    AuraSpeedPercentMachine = 25 },
+            // ── 합성 타워 (Tier 2): 재료 두 개를 합치면 생긴다. 비용은 재료 합 (판매 환불 기준). 문서 19절.
+            new TowerDef { Id = 10, Name = "불화살 사수", Cost = 13, Atk = 9,  AttacksPer10s = 12, Range10 = 35, Tribe = DefTribe.Fire,    Job = DefJob.Archer,  AntiAir = true, BurnPerSec = 3, BurnSeconds = 3, Tier = 2, RecipeA = 1, RecipeB = 4 },
+            new TowerDef { Id = 11, Name = "가시 폭발꽃", Cost = 15, Atk = 10, AttacksPer10s = 6,  Range10 = 20, Tribe = DefTribe.Forest,  Job = DefJob.Mage,    SplashRadius10 = 15, SlowPercent = 30, SlowSeconds = 2, Tier = 2, RecipeA = 2, RecipeB = 5 },
+            new TowerDef { Id = 12, Name = "화염 방사기", Cost = 17, Atk = 7,  AttacksPer10s = 16, Range10 = 25, Tribe = DefTribe.Machine, Job = DefJob.Mage,    SplashRadius10 = 8, BurnPerSec = 3, BurnSeconds = 3, Tier = 2, RecipeA = 7, RecipeB = 5 },
+            new TowerDef { Id = 13, Name = "거목 투석기", Cost = 25, Atk = 30, AttacksPer10s = 3,  Range10 = 40, Tribe = DefTribe.Forest,  Job = DefJob.Warrior, SplashRadius10 = 12, GiantMultiplier = 2, Tier = 2, RecipeA = 8, RecipeB = 3 },
+            new TowerDef { Id = 14, Name = "번개 비행선", Cost = 22, Atk = 14, AttacksPer10s = 8,  Range10 = 40, Tribe = DefTribe.Machine, Job = DefJob.Archer,  AntiAir = true, AirMultiplier = 2, SplashRadius10 = 6, Tier = 2, RecipeA = 6, RecipeB = 9 },
+            new TowerDef { Id = 15, Name = "저격 드론",   Cost = 14, Atk = 22, AttacksPer10s = 5,  Range10 = 55, Tribe = DefTribe.Machine, Job = DefJob.Archer,  AntiAir = true, Tier = 2, RecipeA = 1, RecipeB = 9 },
+            new TowerDef { Id = 16, Name = "철갑 가시",   Cost = 21, Atk = 18, AttacksPer10s = 5,  Range10 = 20, Tribe = DefTribe.Machine, Job = DefJob.Warrior, SlowPercent = 40, SlowSeconds = 2, GiantMultiplier = 2, Tier = 2, RecipeA = 2, RecipeB = 8 },
+            new TowerDef { Id = 17, Name = "화염 정령",   Cost = 19, Atk = 6,  AttacksPer10s = 8,  Range10 = 25, Tribe = DefTribe.Fire,    Job = DefJob.Mage,    SplashRadius10 = 10, AuraAtkPercent = 20, Tier = 2, RecipeA = 3, RecipeB = 5 },
         };
+
+        /// <summary>기본 타워만 (상점에 나오는 것).</summary>
+        public static readonly TowerDef[] BasicTowers = System.Array.FindAll(Towers, t => t.Tier == 1);
+        public static readonly TowerDef[] FusedTowers = System.Array.FindAll(Towers, t => t.Tier == 2);
+
+        /// <summary>두 타워 정의로 만들 수 있는 합성 타워. 순서 무관. 없으면 null.</summary>
+        public static TowerDef FindRecipe(int defA, int defB)
+        {
+            foreach (var t in Towers)
+                if (t.Tier == 2 && ((t.RecipeA == defA && t.RecipeB == defB) || (t.RecipeA == defB && t.RecipeB == defA))) return t;
+            return null;
+        }
+
+        /// <summary>별 등급 공격 배율 (%). ★1 100, ★2 220, ★3 500. 3개를 합치므로 슬롯을 아끼는 대신 합보다 약간 낮거나 비슷하다.</summary>
+        public static int StarPercent(int star) => star <= 1 ? 100 : star == 2 ? 220 : 500;
+        public static int StarRangeBonus10(int star) => star <= 1 ? 0 : star == 2 ? 5 : 10;
 
         public static readonly AttackerDef[] Attackers =
         {

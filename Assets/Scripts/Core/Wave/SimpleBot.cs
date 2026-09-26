@@ -62,6 +62,19 @@ namespace LaneBattle.Core.Wave
                 foreach (var t in lane.Towers)
                     if (t.Alive && !t.Upgraded && p.Gold >= t.Def.Cost + reserve) { output.Add(MatchCommand.Upgrade(team, player, t.Id)); return; }
 
+            // 2b. 자리가 2칸 이하로 남으면 같은 타워 3개 합치기 → 레시피 합성 (둘 다 공짜, 슬롯이 는다)
+            if (slots.Count <= 2)
+            {
+                foreach (var t in lane.Towers)
+                    if (t.Alive && t.Owner == player && sim.MergeMates(team, t) != null) { output.Add(MatchCommand.Merge(team, player, t.Id)); return; }
+                foreach (var t in lane.Towers)
+                {
+                    if (!t.Alive || t.Owner != player || t.Def.IsFused) continue;
+                    var opts = sim.FuseOptions(team, t);
+                    if (opts.Count > 0) { output.Add(MatchCommand.Fuse(team, player, t.Id, opts[0].partnerId)); return; }
+                }
+            }
+
             // 3. 보내기: 상대 대공이 없으면 공중 우선
             int enemyAntiAir = 0;
             foreach (var t in enemyLane.Towers) if (t.Alive && t.Def.AntiAir) enemyAntiAir++;

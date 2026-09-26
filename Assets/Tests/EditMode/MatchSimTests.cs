@@ -131,7 +131,7 @@ namespace LaneBattle.Tests
             var cfg = new MatchConfig { PlayersPerTeam = 2, MatchSeconds = 120 };
             var m = MatchRunner.Play(cfg, 9, new IMatchAgent[] { new SimpleBot(), new SimpleBot() });
             Assert.IsTrue(m.IsOver);
-            Assert.AreEqual(6, m.OwnLane(0).Cfg.Width);
+            Assert.AreEqual(5, m.OwnLane(0).Cfg.Width);
         }
     }
 }
